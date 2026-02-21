@@ -46,6 +46,7 @@ namespace sts {
         int handBloodCardCount = 0;
         int drawPileBloodCardCount = 0;
         int discardPileBloodCardCount = 0;
+        int clawDamage = 0;
 
         void init(const GameContext &gc, BattleContext &bc); // returns count of innate cards
 

@@ -110,6 +110,8 @@ namespace sts {
         // Random Actions
 
         static Action DamageRandomEnemy(int damage); // juggernaut
+        static Action BouncingFlaskAction(int amount, int bounceCount);
+        static Action CatalystAction(int targetIdx, int multiplier); // Catalyst
         static Action GainBlockRandomEnemy(int sourceMonster, int amount);
 
         static Action SummonGremlins();
@@ -117,6 +119,7 @@ namespace sts {
         static Action SpireShieldDebuff(); // only called if player has orb slots
 
         static Action ExhaustRandomCardInHand(int count);
+        static Action DiscardRandomCardInHand(int count);
         static Action MadnessAction();
         static Action RandomizeHandCost();
         static Action UpgradeRandomCardAction(); // Warped Tongs Relic
@@ -124,6 +127,7 @@ namespace sts {
         static Action CodexAction(); // Nilrys Codex onPlayerEndTurn
         static Action ExhaustMany(int limit);
         static Action GambleAction();
+        static Action DiscardAction(int amount, bool isRandom, bool anyNumber, bool canPickZero);
         static Action ToolboxAction();
         static Action FiendFireAction(int targetIdx, int calculatedDamage); // Fiend Fire Card
         static Action SwordBoomerangAction(int baseDamage); // Sword Boomerang

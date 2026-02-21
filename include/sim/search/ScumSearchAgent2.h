@@ -37,6 +37,7 @@ namespace sts::search {
 
         // public interface
         void playout(GameContext &gc);
+        void playoutCurrentBattle(GameContext &gc);
 
         // private methods
         void playoutBattle(BattleContext &bc);

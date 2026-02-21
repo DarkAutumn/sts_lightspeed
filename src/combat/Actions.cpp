@@ -149,7 +149,21 @@ Action Actions::NoOpRollMove() {
 }
 
 Action Actions::ChangeStance(Stance stance) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        if (bc.player.stance == stance) return;
+
+        // Exit effects
+        if (bc.player.stance == Stance::CALM) {
+            bc.addToTop(Actions::GainEnergy(2));
+        }
+
+        bc.player.stance = stance;
+
+        // Enter effects
+        if (stance == Stance::DIVINITY) {
+            bc.addToTop(Actions::GainEnergy(3));
+        }
+    }};
 }
 
 Action Actions::GainEnergy(int amount) {
@@ -351,6 +365,37 @@ Action Actions::DamageRandomEnemy(int damage) {
     }};
 }
 
+Action Actions::BouncingFlaskAction(int amount, int bounceCount) {
+    return {[=] (BattleContext &bc) {
+        for (int i = 0; i < bounceCount; ++i) {
+            int targetCount = bc.monsters.getTargetableCount();
+            if (targetCount == 0) {
+                return;
+            }
+            int targetIdx = bc.cardRandomRng.random(targetCount - 1);
+            for (int m = 0; m < 5; ++m) {
+                if (bc.monsters.arr[m].isTargetable()) {
+                    if (targetIdx == 0) {
+                        bc.addToTop(Actions::DebuffEnemy<MS::POISON>(m, amount, true));
+                        break;
+                    }
+                    --targetIdx;
+                }
+            }
+        }
+    }};
+}
+
+Action Actions::CatalystAction(int targetIdx, int multiplier) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[targetIdx];
+        if (m.hasStatus<MS::POISON>()) {
+            int poisonAmt = m.getStatus<MS::POISON>();
+            bc.addToTop(Actions::DebuffEnemy<MS::POISON>(targetIdx, poisonAmt * (multiplier - 1), false));
+        }
+    }};
+}
+
 Action Actions::ExhaustRandomCardInHand(int count) {
     return {[=] (BattleContext &bc) {
         for (int i = 0; i < count; ++i) {
@@ -361,6 +406,39 @@ Action Actions::ExhaustRandomCardInHand(int count) {
             auto c = bc.cards.hand[idx];
             bc.cards.removeFromHandAtIdx(idx);
             bc.triggerAndMoveToExhaustPile(c);
+        }
+    }};
+}
+
+Action Actions::DiscardRandomCardInHand(int count) {
+    return {[=] (BattleContext &bc) {
+        for (int i = 0; i < count; ++i) {
+            if (bc.cards.cardsInHand <= 0) {
+                return;
+            }
+            const auto idx = bc.cards.getRandomCardIdxInHand(bc.cardRandomRng);
+            auto c = bc.cards.hand[idx];
+            bc.cards.removeFromHandAtIdx(idx);
+            bc.cards.moveToDiscardPile(c);
+            bc.onManualDiscard(c);
+        }
+    }};
+}
+
+Action Actions::DiscardAction(int amount, bool isRandom, bool anyNumber, bool canPickZero) {
+    return {[=] (BattleContext &bc) {
+        if (bc.cards.cardsInHand <= 0) {
+            return;
+        }
+        if (isRandom) {
+            bc.addToTop(Actions::DiscardRandomCardInHand(amount));
+        } else {
+            int count = std::min(amount, bc.cards.cardsInHand);
+            bc.inputState = InputState::CARD_SELECT;
+            bc.cardSelectInfo.cardSelectTask = CardSelectTask::DISCARD;
+            bc.cardSelectInfo.pickCount = count;
+            bc.cardSelectInfo.canPickAnyNumber = anyNumber;
+            bc.cardSelectInfo.canPickZero = canPickZero;
         }
     }};
 }

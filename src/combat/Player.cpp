@@ -107,15 +107,85 @@ void Player::gainEnergy(int amount) {
 }
 
 void Player::increaseOrbSlots(int amount) {
-    // todo
+    if (amount <= 0) return;
+    int oldSlots = orbSlots;
+    orbSlots = std::min(10, static_cast<int>(orbSlots + amount));
+    for (int i = oldSlots; i < orbSlots; ++i) {
+        orbs[i] = Orb::EMPTY;
+        orbData[i] = 0;
+        ++emptyOrbCount;
+    }
 }
 
-void Player::channelOrb(Orb orb) {
-    // todo
+void Player::channelOrb(BattleContext &bc, Orb orb) {
+    if (orbSlots == 0) return;
+
+    if (emptyOrbCount == 0) {
+        evokeOrb(bc);
+    }
+    
+    // Find first empty
+    for (int i = 0; i < orbSlots; ++i) {
+        if (orbs[i] == Orb::EMPTY) {
+            orbs[i] = orb;
+            // init orb data
+            if (orb == Orb::DARK) orbData[i] = 6;
+            else orbData[i] = 0;
+            --emptyOrbCount;
+            break;
+        }
+    }
+}
+
+void Player::evokeOrb(BattleContext &bc) {
+    if (orbSlots == 0 || orbs[0] == Orb::EMPTY) return;
+    
+    Orb evoked = orbs[0];
+    int data = orbData[0];
+
+    // Shift orbs left
+    for (int i = 0; i < orbSlots - 1; ++i) {
+        orbs[i] = orbs[i + 1];
+        orbData[i] = orbData[i + 1];
+    }
+    orbs[orbSlots - 1] = Orb::EMPTY;
+    orbData[orbSlots - 1] = 0;
+    ++emptyOrbCount;
+
+    // Trigger evoke effect
+    int focus = getStatus<PS::FOCUS>();
+    switch (evoked) {
+        case Orb::LIGHTNING:
+            bc.addToTop(Actions::DamageRandomEnemy(8 + focus));
+            break;
+        case Orb::FROST:
+            bc.addToTop(Actions::GainBlock(5 + focus));
+            break;
+        case Orb::DARK:
+            if (!bc.monsters.areMonstersBasicallyDead()) {
+                int lowestHpIdx = -1;
+                int lowestHp = 99999;
+                for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                    if (bc.monsters.arr[i].isTargetable() && bc.monsters.arr[i].curHp < lowestHp) {
+                        lowestHp = bc.monsters.arr[i].curHp;
+                        lowestHpIdx = i;
+                    }
+                }
+                if (lowestHpIdx != -1) {
+                    bc.addToTop(Actions::DamageEnemy(lowestHpIdx, data));
+                }
+            }
+            break;
+        case Orb::PLASMA:
+            bc.addToTop(Actions::GainEnergy(2));
+            break;
+        default:
+            break;
+    }
 }
 
 bool Player::hasEmptyOrb() const {
-    return false;
+    return emptyOrbCount > 0;
 }
 
 void Player::removeDebuffs() {

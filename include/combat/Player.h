@@ -22,6 +22,8 @@
 #include <constants/Relics.h>
 #include <constants/PlayerStatusEffects.h>
 
+#include "combat/CardInstance.h"
+
 // powers that use justApplied:
 // Vulnerable, requires isSourceMonster and actionManager turn has ended
 // Frail, requires isSourceMonster
@@ -42,6 +44,11 @@ namespace sts {
 
         Stance stance = Stance::NEUTRAL;
         int8_t orbSlots = 0;
+        Orb orbs[10] = {Orb::EMPTY};
+        std::int16_t orbData[10] = {0};
+        int8_t emptyOrbCount = 0;
+        int16_t frostOrbsChanneledThisCombat = 0;
+        int16_t lightningOrbsChanneledThisCombat = 0;
 
         // for spire spear/shield
         std::int8_t lastTargetedMonster = 1;
@@ -90,6 +97,9 @@ namespace sts {
         int8_t bomb2 = 0;
         int8_t bomb3 = 0;
 
+        int8_t nightmareCount = 0;
+        CardInstance nightmareCards[2];
+
         template <RelicId r> void setHasRelic(bool value);
         template <PlayerStatus> void setHasStatus(bool value);
         template <PlayerStatus> void setStatusValueNoChecks(int value);
@@ -131,7 +141,8 @@ namespace sts {
         void useEnergy(int amount);
         void gainEnergy(int amount);
         void increaseOrbSlots(int amount);
-        void channelOrb(Orb orb);
+        void channelOrb(BattleContext &bc, Orb orb);
+        void evokeOrb(BattleContext &bc);
         [[nodiscard]] bool hasEmptyOrb() const;
 
         void applyEndOfTurnPowers(BattleContext &bc);
@@ -444,13 +455,13 @@ namespace sts {
     template <RelicId r>
     void Player::setHasRelic(bool value) {
         if (value) {
-            if ((int) r < 64) {
+            if constexpr ((int) r < 64) {
                 relicBits0 |= 1ULL << (int)r;
             } else {
                 relicBits1 |= 1ULL << ((int)r-64);
             }
         } else {
-            if ((int) r < 64) {
+            if constexpr ((int) r < 64) {
                 relicBits0 &= ~(1ULL << (int)r);
             } else {
                 relicBits1 &= ~(1ULL << ((int)r-64));
@@ -460,7 +471,7 @@ namespace sts {
 
     template <RelicId r>
     bool Player::hasRelic() const {
-        if ((int) r < 64) {
+        if constexpr ((int) r < 64) {
             return relicBits0 & (1ULL << (int)r);
         } else {
             return relicBits1 & (1ULL << ((int)r-64));

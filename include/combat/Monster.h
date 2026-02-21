@@ -279,6 +279,8 @@ namespace sts {
             case MonsterStatus::SHARP_HIDE:
                 uniquePower1 = amount;
                 return;
+            default:
+                break;
         }
     }
 #pragma clang diagnostic pop
@@ -569,6 +571,8 @@ namespace sts {
                 setHasStatus<s>(true);
                 uniquePower1 += amount;
                 return;
+            default:
+                break;
         }
     }
 

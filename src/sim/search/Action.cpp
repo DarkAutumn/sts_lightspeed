@@ -188,6 +188,7 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
 
         case CardSelectTask::EXHAUST_MANY:
         case CardSelectTask::GAMBLE:
+        case CardSelectTask::DISCARD:
         default:
             return false;
     }
@@ -208,7 +209,8 @@ bool isValidMultiCardSelectAction(const BattleContext &bc, const search::Action 
             return true;
         }
 
-        case sts::CardSelectTask::GAMBLE: {
+        case sts::CardSelectTask::GAMBLE:
+        case sts::CardSelectTask::DISCARD: {
             const auto selected = a.getSelectedIdxs();
             for (auto x : selected) {
                 if (x >= bc.cards.cardsInHand) {
@@ -385,6 +387,10 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseDrawToHandCards(&idx, 1);
             break;
 
+        case CardSelectTask::SETUP:
+            bc.chooseSetupCard(idx);
+            break;
+
         case CardSelectTask::WARCRY:
             bc.chooseWarcryCard(idx);
             break;
@@ -392,7 +398,6 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
         case CardSelectTask::MEDITATE:
         case CardSelectTask::NIGHTMARE:
         case CardSelectTask::RECYCLE:
-        case CardSelectTask::SETUP:
         case CardSelectTask::SEEK:
             // not implemented
         case CardSelectTask::INVALID:
@@ -411,6 +416,10 @@ void executeMultiCardSelectActionHelper(BattleContext &bc, search::Action a) {
 
         case sts::CardSelectTask::GAMBLE:
             bc.chooseGambleCards(a.getSelectedIdxs());
+            break;
+
+        case sts::CardSelectTask::DISCARD:
+            bc.chooseDiscardCards(a.getSelectedIdxs());
             break;
 
         default:
@@ -512,6 +521,7 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             break;
 
         case CardSelectTask::FORETHOUGHT:
+        case CardSelectTask::SETUP:
         case CardSelectTask::WARCRY:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
@@ -537,6 +547,7 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
 
         case CardSelectTask::EXHAUST_MANY:
         case CardSelectTask::GAMBLE:
+        case CardSelectTask::DISCARD:
             // just dont deal with this right now
             actions.push_back({search::Action(search::ActionType::MULTI_CARD_SELECT, 0)});
             break;

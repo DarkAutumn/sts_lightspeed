@@ -29,6 +29,7 @@ namespace sts {
         std::int16_t specialData = 0;
         std::int8_t cost = 0;
         std::int8_t costForTurn = 0;
+        std::int16_t misc = 0;
 
         // todo dont need all of these, also put in bitset
         bool upgraded = false;

@@ -50,6 +50,15 @@ void search::ScumSearchAgent2::playout(GameContext &gc) {
     }
 }
 
+void search::ScumSearchAgent2::playoutCurrentBattle(GameContext &gc) {
+    if (gc.screenState == ScreenState::BATTLE) {
+        BattleContext bc;
+        bc.init(gc);
+        playoutBattle(bc);
+        bc.exitBattle(gc);
+    }
+}
+
 static void printHelper(const BattleContext &bc, const search::Action &a) {
     a.printDesc(std::cout, bc) << " ";
     std::cout

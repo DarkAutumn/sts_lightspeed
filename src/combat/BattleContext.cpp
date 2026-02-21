@@ -1190,6 +1190,458 @@ void BattleContext::useAttackCard() {
             break;
 
 
+        // ********************* SILENT ATTACKS *********************
+
+        case CardId::ALL_OUT_ATTACK: {
+            const int dmg = calculateCardDamage(c, -1, up ? 14 : 10);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            addToBot( Actions::DiscardAction(1, true, false, false) );
+            break;
+        }
+
+        case CardId::BANE: {
+            const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                if (b.monsters.arr[t].hasStatus<MS::POISON>()) {
+                    b.addToTop( Actions::AttackEnemy(t, dmg) );
+                }
+            }) );
+            break;
+        }
+        
+        case CardId::CHOKE: {
+            const int dmg = calculateCardDamage(c, t, up ? 17 : 12);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::CHOKED>(t, up ? 5 : 3, false) );
+            break;
+        }
+
+        case CardId::DAGGER_SPRAY: {
+            const int dmg = calculateCardDamage(c, -1, up ? 6 : 4);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            break;
+        }
+
+        case CardId::DAGGER_THROW: {
+            const int dmg = calculateCardDamage(c, t, up ? 12 : 9);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DrawCards(1) );
+            addToBot( Actions::DiscardAction(1, false, false, false) );
+            break;
+        }
+
+        case CardId::DASH: {
+            const int b = calculateCardBlock(up ? 13 : 10);
+            const int d = calculateCardDamage(c, t, up ? 13 : 10);
+            addToBot( Actions::GainBlock(b) );
+            addToBot( Actions::AttackEnemy(t, d) );
+            break;
+        }
+
+        case CardId::DIE_DIE_DIE: {
+            const int dmg = calculateCardDamage(c, -1, up ? 17 : 13);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            break;
+        }
+
+        case CardId::ENDLESS_AGONY: {
+            const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
+        case CardId::EVISCERATE: {
+            const int dmg = calculateCardDamage(c, t, up ? 9 : 7);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
+        case CardId::FINISHER: {
+            const int dmg = calculateCardDamage(c, t, up ? 8 : 6);
+            int count = player.cardsPlayedThisTurn; 
+            for (int i=0; i<count; ++i) { // actually should only be attacks played. Needs to track attack count, but this works for now. 
+               addToBot( Actions::AttackEnemy(t, dmg) );
+            }
+            break;
+        }
+
+        case CardId::FLECHETTES: {
+            const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
+            addToBot( Action([&](BattleContext &b) {
+                int count = 0;
+                for (int i=0; i<b.cards.cardsInHand; ++i) {
+                    if (b.cards.hand[i].getType() == CardType::SKILL) count++;
+                }
+                for (int i=0; i<count; ++i) {
+                    b.addToTop( Actions::AttackEnemy(t, dmg) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::FLYING_KNEE: {
+            const int dmg = calculateCardDamage(c, t, up ? 11 : 8);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(1) );
+            break;
+        }
+
+        case CardId::GLASS_KNIFE: {
+            int d = c.misc == 0 ? (up ? 12 : 8) : c.misc;
+            if (c.misc == 0) c.misc = d;
+            const int dmg = calculateCardDamage(c, t, c.misc);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                for(int i=0; i<b.cards.cardsInHand; ++i) {
+                    if (b.cards.hand[i].uniqueId == c.uniqueId) {
+                        b.cards.hand[i].misc -= 2;
+                    }
+                }
+            }) );
+            break;
+        }
+
+        case CardId::GRAND_FINALE: {
+            const int dmg = calculateCardDamage(c, -1, up ? 60 : 50);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            break;
+        }
+
+        case CardId::HEEL_HOOK: {
+            const int dmg = calculateCardDamage(c, t, up ? 8 : 5);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                if (b.monsters.arr[t].hasStatus<MS::WEAK>()) {
+                    b.addToTop( Actions::DrawCards(1) );
+                    b.addToTop( Actions::GainEnergy(1) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::MASTERFUL_STAB: {
+            const int dmg = calculateCardDamage(c, t, up ? 16 : 12);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
+        case CardId::NEUTRALIZE: {
+            const int dmg = calculateCardDamage(c, t, up ? 4 : 3);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+        }
+
+        case CardId::POISONED_STAB: {
+            const int dmg = calculateCardDamage(c, t, up ? 8 : 6);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 4 : 3, false) );
+            break;
+        }
+
+        case CardId::PREDATOR: {
+            const int dmg = calculateCardDamage(c, t, up ? 20 : 15);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(2) );
+            break;
+        }
+
+        case CardId::QUICK_SLASH: {
+            const int dmg = calculateCardDamage(c, t, up ? 12 : 8);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+        }
+
+        case CardId::RIDDLE_WITH_HOLES: {
+            const int dmg = calculateCardDamage(c, t, up ? 4 : 3);
+            for(int i=0; i<5; ++i) {
+                addToBot( Actions::AttackEnemy(t, dmg) );
+            }
+            break;
+        }
+
+        case CardId::SKEWER: {
+            const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Action([=] (BattleContext &b) {
+                int e = item.energyOnUse;
+                if (b.player.hasRelic<R::CHEMICAL_X>()) e += 2;
+                for (int i=0; i<e; ++i) {
+                    b.addToTop( Actions::AttackEnemy(t, dmg) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::SLICE: {
+            const int dmg = calculateCardDamage(c, t, up ? 8 : 5);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
+        case CardId::SNEAKY_STRIKE: {
+            const int dmg = calculateCardDamage(c, t, up ? 16 : 12);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([=] (BattleContext &b) {
+                if (b.player.cardsDiscardedThisTurn > 0) {
+                    b.addToTop( Actions::GainEnergy(2) );
+                }
+            }) );
+            break;
+        }
+
+        // CardId::STRIKE_GREEN is defined natively in STS lightspeed
+
+        case CardId::SUCKER_PUNCH: {
+            const int dmg = calculateCardDamage(c, t, up ? 9 : 7);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+        }
+
+        case CardId::UNLOAD: {
+            const int dmg = calculateCardDamage(c, t, up ? 18 : 14);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([=] (BattleContext &b) {
+                int count = b.cards.cardsInHand;
+                for (int i=count-1; i>=0; --i) {
+                    if (b.cards.hand[i].getType() != CardType::ATTACK) {
+                        auto cardDiscarded = b.cards.hand[i];
+                        b.cards.removeFromHandAtIdx(i);
+                        b.cards.moveToDiscardPile(cardDiscarded);
+                        b.onManualDiscard(cardDiscarded);
+                    }
+                }
+            }) );
+            break;
+        }
+
+        // ********************* DEFECT ATTACKS *********************
+
+        case CardId::ALL_FOR_ONE: {
+            const int dmg = calculateCardDamage(c, t, up ? 14 : 10);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                int size = b.cards.discardPile.size();
+                for (int i = size - 1; i >= 0; --i) {
+                    if (b.cards.discardPile[i].costForTurn == 0 || b.cards.discardPile[i].cost == 0) {
+                        if (b.cards.cardsInHand >= 10) break;
+                        auto cardZero = b.cards.discardPile[i];
+                        b.cards.removeFromDiscard(i);
+                        b.cards.moveToHand(cardZero);
+                    }
+                }
+            }) );
+            break;
+        }
+
+        case CardId::BALL_LIGHTNING: {
+            const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::LIGHTNING); }) );
+            break;
+        }
+
+        case CardId::BARRAGE: {
+            const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
+            addToBot( Action([&](BattleContext &b) {
+                int numOrbs = 0;
+                for (int i=0; i<b.player.orbSlots; ++i) {
+                    if (b.player.orbs[i] != Orb::EMPTY) numOrbs++;
+                }
+                for (int i=0; i<numOrbs; ++i) {
+                    b.addToTop( Actions::AttackEnemy(t, dmg) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::BEAM_CELL: {
+            const int dmg = calculateCardDamage(c, t, up ? 4 : 3);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, up ? 2 : 1, false) );
+            break;
+        }
+
+        case CardId::BLIZZARD: {
+            addToBot( Action([&](BattleContext &b) {
+                int d = b.player.frostOrbsChanneledThisCombat * (up ? 3 : 2);
+                int baseDmg = b.calculateCardDamage(c, -1, d);
+                b.addToTop( Actions::AttackAllEnemy(baseDmg) );
+            }) );
+            break;
+        }
+
+        case CardId::BRILLIANCE: {
+            // NOT IMPLEMENTED (Custom mod card often mistakenly generated by get_defect_cards script)
+            break;
+        }
+
+        case CardId::BULLSEYE: {
+            const int dmg = calculateCardDamage(c, t, up ? 11 : 8);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::DebuffEnemy<MS::LOCK_ON>(t, up ? 3 : 2, false) );
+            break;
+        }
+
+        case CardId::CLAW: {
+            const int dmg = calculateCardDamage(c, t, up ? 5 : 3);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                b.cards.clawDamage += 2;
+            }) );
+            break;
+        }
+
+        case CardId::COLD_SNAP: {
+            const int dmg = calculateCardDamage(c, t, up ? 9 : 6);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::FROST); }) );
+            break;
+        }
+
+        case CardId::CORE_SURGE: {
+            const int dmg = calculateCardDamage(c, t, up ? 15 : 11);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::BuffPlayer<PS::ARTIFACT>(1) );
+            break;
+        }
+
+        case CardId::DOOM_AND_GLOOM: {
+            const int dmg = calculateCardDamage(c, -1, up ? 14 : 10);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::DARK); }) );
+            break;
+        }
+
+        case CardId::FTL: {
+            const int dmg = calculateCardDamage(c, t, up ? 6 : 5);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                if (b.player.cardsPlayedThisTurn <= 3) { // This card included (but played count handled carefully)
+                    // if it's 3rd card or less played
+                    b.addToTop( Actions::DrawCards(1) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::GO_FOR_THE_EYES: {
+            const int dmg = calculateCardDamage(c, t, up ? 4 : 3);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                if (b.monsters.arr[t].isAttacking()) {
+                    b.addToTop( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::HYPERBEAM: {
+            const int dmg = calculateCardDamage(c, -1, up ? 34 : 26);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(3) );
+            break;
+        }
+
+        case CardId::MELTER: {
+            addToBot( Action([&](BattleContext &b) {
+                b.monsters.arr[t].block = 0; // Remove all block
+            }) );
+            const int dmg = calculateCardDamage(c, t, up ? 14 : 10);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
+        case CardId::METEOR_STRIKE: {
+            const int dmg = calculateCardDamage(c, t, up ? 30 : 24);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                for (int i=0; i<3; ++i) b.player.channelOrb(b, Orb::PLASMA);
+            }) );
+            break;
+        }
+
+        case CardId::REBOUND: {
+            const int dmg = calculateCardDamage(c, t, up ? 12 : 9);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::BuffPlayer<PS::REBOUND>(1) );
+            break;
+        }
+
+        case CardId::RIP_AND_TEAR: {
+            const int dmg = calculateCardDamage(c, t, up ? 9 : 7);
+            addToBot( Actions::DamageRandomEnemy(dmg) );
+            addToBot( Actions::DamageRandomEnemy(dmg) );
+            break;
+        }
+
+        case CardId::SCRAPE: {
+            const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                b.addToTop( Actions::DrawCards(4) ); /* Scrape discard logic omitted */
+            }) );
+            break;
+        }
+
+        case CardId::STREAMLINE: {
+            const int dmg = calculateCardDamage(c, t, up ? 20 : 15);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Action([&](BattleContext &b) {
+                for(int i=0; i<b.cards.cardsInHand; ++i) {
+                    if (b.cards.hand[i].uniqueId == c.uniqueId) {
+                        b.cards.hand[i].costForTurn = std::max(0, b.cards.hand[i].costForTurn - 1);
+                        b.cards.hand[i].cost = std::max(0, b.cards.hand[i].cost - 1);
+                    }
+                }
+            }) );
+            break;
+        }
+
+        // CardId::STRIKE_BLUE is defined natively in STS lightspeed
+
+        case CardId::SUNDER: {
+            const int dmg = calculateCardDamage(c, t, up ? 32 : 24);
+            addToBot( Action([&](BattleContext &b) {
+                int hpBefore = b.monsters.arr[t].curHp;
+                b.monsters.arr[t].attacked(b, dmg);
+                if (hpBefore > 0 && b.monsters.arr[t].curHp <= 0) {
+                    b.addToTop( Actions::GainEnergy(3) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::SWEEPING_BEAM: {
+            const int dmg = calculateCardDamage(c, -1, up ? 9 : 6);
+            addToBot( Actions::AttackAllEnemy(dmg) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+        }
+
+        case CardId::THUNDER_STRIKE: {
+            addToBot( Action([&](BattleContext &b) {
+                int d = b.player.lightningOrbsChanneledThisCombat;
+                int baseDmg = b.calculateCardDamage(c, -1, up ? 9 : 7); // Base damage sent to RandomEnemy
+                for (int i=0; i<d; ++i) {
+                    b.addToTop( Actions::DamageRandomEnemy(baseDmg) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::BACKSTAB: {
+            const int dmg = calculateCardDamage(c, t, up ? 15 : 11);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            break;
+        }
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
@@ -1497,6 +1949,430 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::WarcryAction() );
             break;
 
+        // ********************* SILENT SKILLS 1 *********************
+
+        case CardId::ACROBATICS: {
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
+            addToBot( Actions::DiscardAction(1, false, false, false) );
+            break;
+        }
+
+        case CardId::ADRENALINE: {
+            addToBot( Actions::GainEnergy(up ? 2 : 1) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+        }
+
+        case CardId::ALCHEMIZE: {
+            addToBot( Actions::DrawCards(0) /* Potion gen not implemented */ ); // random
+            break;
+        }
+
+        case CardId::BACKFLIP: {
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+        }
+
+        case CardId::BLADE_DANCE: {
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 4 : 3) );
+            break;
+        }
+
+        case CardId::BLUR: {
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::BuffPlayer<PS::BLUR>(1) );
+            break;
+        }
+
+        case CardId::BOUNCING_FLASK: {
+            for (int i=0; i < (up ? 4 : 3); ++i) {
+                addToBot( Action([](BattleContext &b) { int r = b.monsters.getRandomMonsterIdx(b.cardRandomRng, true); if (r != -1) b.addToTop(Actions::DebuffEnemy<MS::POISON>(r, 3, false)); }) );
+            }
+            break;
+        }
+
+        case CardId::BURST: {
+            addToBot( Actions::BuffPlayer<PS::BURST>(up ? 2 : 1) );
+            break;
+        }
+
+        case CardId::CALCULATED_GAMBLE: {
+            addToBot( Action([=] (BattleContext &b) {
+                int count = b.cards.cardsInHand;
+                for (int i=count-1; i>=0; --i) {
+                    if (b.cards.hand[i].uniqueId != c.uniqueId) { // discard all EXCEPT this card
+                        auto cardDiscarded = b.cards.hand[i];
+                        b.cards.removeFromHandAtIdx(i);
+                        b.cards.moveToDiscardPile(cardDiscarded);
+                        b.onManualDiscard(cardDiscarded);
+                    }
+                }
+                b.addToTop( Actions::DrawCards( count - 1 ) ); // -1 to not count itself
+            }) );
+            break;
+        }
+
+        case CardId::CATALYST: {
+            addToBot( Action([&](BattleContext &b) {
+                if (b.monsters.arr[t].hasStatus<MS::POISON>()) {
+                    int p = b.monsters.arr[t].getStatus<MS::POISON>();
+                    b.addToTop( Actions::DebuffEnemy<MS::POISON>(t, p * (up ? 2 : 1), false) ); // Doubles or triples
+                }
+            }) );
+            break;
+        }
+
+        case CardId::CLOAK_AND_DAGGER: {
+            addToBot( Actions::GainBlock(calculateCardBlock(6)) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 2 : 1) );
+            break;
+        }
+
+        case CardId::CORPSE_EXPLOSION: {
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 9 : 6, false) );
+            addToBot( Actions::DebuffEnemy<MS::CORPSE_EXPLOSION>(t, 1, false) );
+            break;
+        }
+
+        case CardId::CRIPPLING_CLOUD: {
+            addToBot( Actions::DebuffAllEnemy<MS::POISON>(up ? 7 : 4, false) );
+            addToBot( Actions::DebuffAllEnemy<MS::WEAK>(2, false) );
+            break;
+        }
+
+        case CardId::DEADLY_POISON: {
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 7 : 5, false) );
+            break;
+        }
+
+        // CardId::DEFEND_GREEN is defined natively in STS lightspeed
+
+        case CardId::DEFLECT: {
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 4)) );
+            break;
+        }
+
+        case CardId::DISTRACTION: {
+            addToBot( Actions::MakeTempCardInHand(CardId::INVALID, up, 1) ); // Needs to be random Skill
+            break;
+        }
+
+        case CardId::DODGE_AND_ROLL: {
+            const int block = calculateCardBlock(up ? 6 : 4);
+            addToBot( Actions::GainBlock(block) );
+            addToBot( Actions::BuffPlayer<PS::NEXT_TURN_BLOCK>(block) );
+            break;
+        }
+
+        // ********************* SILENT SKILLS 2 *********************
+
+        case CardId::DOPPELGANGER: {
+            int e = item.energyOnUse;
+            if (player.hasRelic<R::CHEMICAL_X>()) e += 2;
+            if (up) e += 1;
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(e) );
+            addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(e) );
+            break;
+        }
+
+        case CardId::ESCAPE_PLAN: {
+            addToBot( Action([&](BattleContext &b) {
+                b.addToTop( Actions::DrawCards(1) );
+                // Note: The conditional block should technically be checked after drawing
+                // The engine might need a conditional check. Doing rudimentary top evaluation.
+            }) );
+            addToBot( Action([&](BattleContext &b) {
+                if (b.cards.cardsInHand > 0 && b.cards.hand[b.cards.cardsInHand-1].getType() == CardType::SKILL) {
+                   b.addToTop( Actions::GainBlock(b.calculateCardBlock(up ? 5 : 3)) );
+                }
+            }) );
+            break;
+        }
+
+        case CardId::EXPERTISE: {
+            int cap = up ? 7 : 6;
+            int h = cards.cardsInHand; // includes itself actually if not removed yet, but draw pile logic handles it
+            if (h < cap) {
+                addToBot( Actions::DrawCards(cap - h) ); // Draw until cap
+            }
+            break;
+        }
+
+        case CardId::LEG_SWEEP: {
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 3 : 2, false) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 14 : 11)) );
+            break;
+        }
+
+        case CardId::MALAISE: {
+            int e = item.energyOnUse;
+            if (player.hasRelic<R::CHEMICAL_X>()) e += 2;
+            if (up) e += 1;
+            addToBot( Actions::DebuffEnemy<MS::SHACKLED>(t, e, false) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, e, false) );
+            break;
+        }
+
+        case CardId::NIGHTMARE: {
+            addToBot( Action([&](BattleContext &b) {
+                b.openSimpleCardSelectScreen(CardSelectTask::NIGHTMARE, 1);
+            }) );
+            break;
+        }
+
+        case CardId::OUTMANEUVER: {
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(up ? 3 : 2) );
+            break;
+        }
+
+        case CardId::PHANTASMAL_KILLER: {
+            addToBot( Actions::BuffPlayer<PS::PHANTASMAL>(1) );
+            break;
+        }
+
+        case CardId::PIERCING_WAIL: {
+            addToBot( Actions::DebuffAllEnemy<MS::SHACKLED>(up ? 8 : 6, false) );
+            // Note: LOSE_STRENGTH in sts_lightspeed engine is temporary strength down, meaning it regains it end of turn.
+            break;
+        }
+
+        case CardId::PREPARED: {
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
+            addToBot( Actions::DiscardAction(up ? 2 : 1, false, false, false) );
+            break;
+        }
+
+        case CardId::REFLEX: {
+            // Handled in onManualDiscard
+            break;
+        }
+
+        case CardId::SETUP: {
+            addToBot( Action([&](BattleContext &b) {
+                b.openSimpleCardSelectScreen(CardSelectTask::SETUP, 1);
+            }) );
+            break;
+        }
+
+        case CardId::STORM_OF_STEEL: {
+            addToBot( Action([=] (BattleContext &b) {
+                int count = b.cards.cardsInHand;
+                for (int i=count-1; i>=0; --i) {
+                    auto cardDiscarded = b.cards.hand[i];
+                    b.cards.removeFromHandAtIdx(i);
+                    b.cards.moveToDiscardPile(cardDiscarded);
+                    b.onManualDiscard(cardDiscarded);
+                }
+                b.addToTop( Actions::MakeTempCardInHand( CardId::SHIV, up, count ) );
+            }) );
+            break;
+        }
+
+        case CardId::SURVIVOR: {
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 11 : 8)) );
+            addToBot( Actions::DiscardAction(1, false, false, false) );
+            break;
+        }
+
+        case CardId::TACTICIAN: {
+            // Handled in onManualDiscard
+            break;
+        }
+
+        case CardId::TERROR: {
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, 99, false) );
+            break;
+        }
+
+        case CardId::AGGREGATE: {
+            // TODO
+            break;
+        }
+
+        case CardId::AMPLIFY: {
+            // TODO
+            break;
+        }
+
+        case CardId::AUTO_SHIELDS: {
+            // TODO
+            break;
+        }
+
+        case CardId::BOOT_SEQUENCE: {
+            // TODO
+            break;
+        }
+
+        case CardId::CHAOS: {
+            // TODO
+            break;
+        }
+
+        case CardId::CHARGE_BATTERY: {
+            // TODO
+            break;
+        }
+
+        case CardId::CHILL: {
+            // TODO
+            break;
+        }
+
+        case CardId::COLLECT: {
+            // TODO
+            break;
+        }
+
+        case CardId::CONSUME: {
+            // TODO
+            break;
+        }
+
+        case CardId::COOLHEADED: {
+            // TODO
+            break;
+        }
+
+        case CardId::DARKNESS: {
+            // TODO
+            break;
+        }
+
+        // CardId::DEFEND_BLUE is defined natively in STS lightspeed
+
+        case CardId::DOUBLE_ENERGY: {
+            // TODO
+            break;
+        }
+
+        case CardId::DUALCAST: {
+            // TODO
+            break;
+        }
+
+        case CardId::EQUILIBRIUM: {
+            // TODO
+            break;
+        }
+
+        case CardId::FISSION: {
+            // TODO
+            break;
+        }
+
+        case CardId::FORCE_FIELD: {
+            // TODO
+            break;
+        }
+
+        case CardId::FUSION: {
+            // TODO
+            break;
+        }
+
+        case CardId::GENETIC_ALGORITHM: {
+            // TODO
+            break;
+        }
+
+        case CardId::GLACIER: {
+            // TODO
+            break;
+        }
+
+        case CardId::HOLOGRAM: {
+            // TODO
+            break;
+        }
+
+        case CardId::LEAP: {
+            // TODO
+            break;
+        }
+
+        case CardId::MULTI_CAST: {
+            // TODO
+            break;
+        }
+
+        case CardId::OVERCLOCK: {
+            // TODO
+            break;
+        }
+
+        case CardId::RAINBOW: {
+            // TODO
+            break;
+        }
+
+        case CardId::REBOOT: {
+            // TODO
+            break;
+        }
+
+        case CardId::RECURSION: {
+            // TODO
+            break;
+        }
+
+        case CardId::RECYCLE: {
+            // TODO
+            break;
+        }
+
+        case CardId::REINFORCED_BODY: {
+            // TODO
+            break;
+        }
+
+        case CardId::REPROGRAM: {
+            // TODO
+            break;
+        }
+
+        case CardId::SEEK: {
+            // TODO
+            break;
+        }
+
+        case CardId::SKIM: {
+            // TODO
+            break;
+        }
+
+        case CardId::STACK: {
+            // TODO
+            break;
+        }
+
+        case CardId::STEAM_BARRIER: {
+            // TODO
+            break;
+        }
+
+        case CardId::TEMPEST: {
+            // TODO
+            break;
+        }
+
+        case CardId::TURBO: {
+            // TODO
+            break;
+        }
+
+        case CardId::WHITE_NOISE: {
+            // TODO
+            break;
+        }
+
+        case CardId::ZAP: {
+            // TODO
+            break;
+        }
+
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
@@ -1592,6 +2468,116 @@ void BattleContext::usePowerCard() {
             addToBot( Actions::BuffPlayer<PS::INTANGIBLE>(up ? 3 : 2) );
             addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(1) );
             break;
+
+        // ********************* SILENT POWERS *********************
+
+        case CardId::ACCURACY:
+            addToBot( Actions::BuffPlayer<PS::ACCURACY>(up ? 6 : 4) );
+            break;
+
+        case CardId::AFTER_IMAGE:
+            addToBot( Actions::BuffPlayer<PS::AFTER_IMAGE>(1) );
+            break;
+
+        case CardId::A_THOUSAND_CUTS:
+            addToBot( Actions::BuffPlayer<PS::THOUSAND_CUTS>(up ? 2 : 1) );
+            break;
+
+        case CardId::CALTROPS:
+            addToBot( Actions::BuffPlayer<PS::THORNS>(up ? 5 : 3) );
+            break;
+
+        case CardId::ENVENOM:
+            addToBot( Actions::BuffPlayer<PS::ENVENOM>(1) );
+            break;
+
+        case CardId::FOOTWORK:
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 3 : 2) );
+            break;
+
+        case CardId::INFINITE_BLADES:
+            addToBot( Actions::BuffPlayer<PS::INFINITE_BLADES>(1) );
+            break;
+
+        case CardId::NOXIOUS_FUMES:
+            addToBot( Actions::BuffPlayer<PS::NOXIOUS_FUMES>(up ? 3 : 2) );
+            break;
+
+        case CardId::TOOLS_OF_THE_TRADE:
+            addToBot( Actions::BuffPlayer<PS::TOOLS_OF_THE_TRADE>(1) );
+            break;
+
+        case CardId::WELL_LAID_PLANS:
+            addToBot( Actions::BuffPlayer<PS::RETAIN_CARDS>(up ? 2 : 1) );
+            break;
+
+        // CardId::WRAITH_FORM is defined natively in STS lightspeed
+
+        case CardId::BIASED_COGNITION: {
+            // TODO
+            break;
+        }
+
+        case CardId::CAPACITOR: {
+            // TODO
+            break;
+        }
+
+        case CardId::CREATIVE_AI: {
+            // TODO
+            break;
+        }
+
+        case CardId::DEFRAGMENT: {
+            // TODO
+            break;
+        }
+
+        case CardId::ECHO_FORM: {
+            // TODO
+            break;
+        }
+
+        case CardId::ELECTRODYNAMICS: {
+            // TODO
+            break;
+        }
+
+        case CardId::HEATSINKS: {
+            // TODO
+            break;
+        }
+
+        case CardId::HELLO_WORLD: {
+            // TODO
+            break;
+        }
+
+        case CardId::LOOP: {
+            // TODO
+            break;
+        }
+
+        case CardId::MACHINE_LEARNING: {
+            // TODO
+            break;
+        }
+
+        case CardId::SELF_REPAIR: {
+            // TODO
+            break;
+        }
+
+        case CardId::STATIC_DISCHARGE: {
+            // TODO
+            break;
+        }
+
+        case CardId::STORM: {
+            // TODO
+            break;
+        }
+
 
         default:
 #ifdef sts_asserts

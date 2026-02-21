@@ -348,6 +348,11 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
             printCardOptionsHelper(os, bc->cards.discardPile.begin(), bc->cards.discardPile.end());
             break;
 
+        case CardSelectTask::DISCARD:
+            os << "Discard Action: Choose cards to discard from your hand.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
+            break;
+
         case CardSelectTask::NIGHTMARE:
             break;
 
@@ -474,6 +479,10 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
             bc->chooseDiscardToHandCard(std::stoi(action), true);
             break;
 
+        case CardSelectTask::DISCARD:
+            bc->chooseDiscardCards(getIdxListFromString(action));
+            break;
+
         case CardSelectTask::MEDITATE:  // todo
             break;
 
@@ -493,7 +502,8 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
         case CardSelectTask::SEEK:  // todo
             break;
 
-        case CardSelectTask::SETUP:  // todo
+        case CardSelectTask::SETUP:
+            bc->chooseSetupCard(std::stoi(action));
             break;
 
         case CardSelectTask::WARCRY:

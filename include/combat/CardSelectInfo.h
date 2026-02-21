@@ -33,6 +33,7 @@ namespace sts {
         SEEK,
         SETUP,
         WARCRY,
+        DISCARD,
     };
 
     static constexpr const char* cardSelectTaskStrings[] = {
@@ -57,6 +58,7 @@ namespace sts {
             "SEEK",
             "SETUP",
             "WARCRY",
+            "DISCARD",
     };
 
     struct CardSelectInfo {

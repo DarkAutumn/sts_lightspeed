@@ -205,12 +205,17 @@ namespace sts {
         void chooseForethoughtCard(int handIdx);
         void chooseHeadbuttCard(int discardIdx);
         void chooseRecycleCard(int handIdx);
+
+
         void chooseWarcryCard(int handIdx);
+        void chooseSetupCard(int handIdx);
+        void chooseNightmareCard(int handIdx);
 
         // multi card helpers
         void chooseDrawToHandCards(const int *idxs, int cardCount);
         void chooseExhaustCards(const fixed_list<int,10> &idxs);
         void chooseGambleCards(const fixed_list<int,10> &idxs);
+        void chooseDiscardCards(const fixed_list<int,10> &idxs);
 
     };
 
@@ -219,31 +224,38 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::BuffPlayer(int amount) {
         return {[=] (BattleContext &bc) {
-            if (s == PlayerStatus::CORRUPTION && !bc.player.hasStatus<PS::CORRUPTION>()) {
+            if (s == PlayerStatus::CORRUPTION && !bc.player.template hasStatus<PS::CORRUPTION>()) {
                 bc.cards.onBuffCorruption();
             }
             bc.player.buff<s>(amount);
+
+            if constexpr (s == PlayerStatus::MANTRA) {
+                if (bc.player.template getStatus<PS::MANTRA>() >= 10) {
+                    bc.player.template decrementStatus<PS::MANTRA>(10);
+                    bc.addToTop(Actions::ChangeStance(Stance::DIVINITY));
+                }
+            }
         }};
     }
 
     template <PlayerStatus s>
     Action Actions::DebuffPlayer(int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
-            bc.player.debuff<s>(amount, isSourceMonster);
+            bc.player.template debuff<s>(amount, isSourceMonster);
         }};
     }
 
     template<PlayerStatus s>
     Action Actions::DecrementStatus(int amount) {
         return {[=] (BattleContext &bc) {
-            bc.player.decrementStatus<s>(amount);
+            bc.player.template decrementStatus<s>(amount);
         }};
     }
 
     template <PlayerStatus s>
     Action Actions::RemoveStatus() {
         return {[=] (BattleContext &bc) {
-            bc.player.setHasStatus<s>(false);
+            bc.player.template setHasStatus<s>(false);
         }};
     }
 
@@ -258,7 +270,13 @@ namespace sts {
     template <MonsterStatus s>
     Action Actions::DebuffEnemy(int idx, int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
-            bc.debuffEnemy<s>(idx, amount, isSourceMonster);
+            int finalAmount = amount;
+            if constexpr (s == MS::POISON) {
+                if (!isSourceMonster && bc.player.template hasRelic<R::SNECKO_SKULL>()) {
+                    ++finalAmount;
+                }
+            }
+            bc.debuffEnemy<s>(idx, finalAmount, isSourceMonster);
         }};
     }
 
