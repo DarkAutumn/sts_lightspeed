@@ -18,14 +18,21 @@ import yaml
 from pathlib import Path
 from typing import Optional, Callable, List, Tuple
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add paths for imports
+_project_root = Path(__file__).parent.parent  # worktree root
+_integration_dir = Path(__file__).parent
+sys.path.insert(0, str(_project_root))
+sys.path.insert(0, str(_integration_dir))
 
-from tests.integration.harness.game_controller import GameController, CommunicationModError
-from tests.integration.harness.simulator_controller import SimulatorController
-from tests.integration.harness.state_comparator import StateComparator, ComparisonResult
-from tests.integration.harness.action_translator import ActionTranslator, TranslatedAction
-from tests.integration.harness.reporter import Reporter, TestResult, StepResult, ActionRecord
+# Import from local integration harness (has state_comparator, action_translator)
+from harness.game_controller import GameController, CommunicationModError
+from harness.simulator_controller import SimulatorController
+from harness.state_comparator import StateComparator, ComparisonResult
+from harness.action_translator import ActionTranslator, TranslatedAction
+from harness.reporter import Reporter, TestResult, StepResult, ActionRecord
+
+# Import from tests harness (has scenario_loader, seed_synchronizer, etc.)
+from tests.integration.harness.scenario_loader import ScenarioLoader, Scenario, ScenarioStep
 
 
 class TestRunner:
@@ -312,6 +319,140 @@ class TestRunner:
             max_steps=self.config.get('scenarios', {}).get('quick', {}).get('max_steps', 50)
         )
 
+    def run_scenario(self, scenario_path: str) -> TestResult:
+        """Run a YAML scenario file.
+
+        Args:
+            scenario_path: Path to the YAML scenario file.
+
+        Returns:
+            TestResult with scenario execution results.
+        """
+        loader = ScenarioLoader()
+        scenario = loader.load(scenario_path)
+
+        result = TestResult(
+            test_name=scenario.name,
+            seed=scenario.seed or 12345,
+            character=scenario.character,
+            ascension=scenario.ascension
+        )
+        self._current_result = result
+
+        # Initialize simulator
+        self.init_simulator(
+            seed=scenario.seed or 12345,
+            character=scenario.character,
+            ascension=scenario.ascension
+        )
+
+        # Execute scenario steps
+        for step in scenario.steps:
+            action = self._translate_scenario_step(step)
+            if action is None:
+                continue
+
+            step_result = self.run_synchronized_step(action)
+            result.add_step(step_result)
+
+            # Check expected state if defined
+            if step.expected:
+                verification = self._verify_expected_state(step.expected)
+                if not verification.get('match', True):
+                    print(f"Step {step_result.step}: State mismatch - {verification.get('message', '')}")
+
+            # Stop on critical failure
+            if step_result.comparison and step_result.comparison.critical_count > 0:
+                print(f"Stopping scenario: Critical discrepancy at step {step_result.step}")
+                break
+
+        result.finalize()
+        self._current_result = None
+        return result
+
+    def _translate_scenario_step(self, step: ScenarioStep) -> Optional[TranslatedAction]:
+        """Translate a scenario step to a TranslatedAction.
+
+        Args:
+            step: ScenarioStep to translate.
+
+        Returns:
+            TranslatedAction or None if translation failed.
+        """
+        params = step.params
+
+        if step.action_type == 'play':
+            # Find card by name in hand
+            card_name = params.get('card', '')
+            target = params.get('target', -1)
+            if self.sim:
+                state = self.sim.get_state()
+                combat = state.get('combat_state', {})
+                for i, card in enumerate(combat.get('hand', [])):
+                    if card_name.lower() in card.get('name', '').lower():
+                        if target >= 0:
+                            return self.translator.from_sim_to_game(f"{i} {target}")
+                        return self.translator.from_sim_to_game(str(i))
+
+        elif step.action_type == 'end_turn' or step.action_type == 'end':
+            return self.translator.from_sim_to_game("end")
+
+        elif step.action_type == 'choose':
+            option = params.get('option', 0)
+            return self.translator.from_sim_to_game(str(option))
+
+        elif step.action_type == 'potion':
+            slot = params.get('slot', 0)
+            target = params.get('target', -1)
+            subaction = params.get('subaction', 'use')
+            if subaction == 'use':
+                if target >= 0:
+                    return self.translator.from_sim_to_game(f"drink {slot} {target}")
+                return self.translator.from_sim_to_game(f"drink {slot}")
+            else:
+                return self.translator.from_sim_to_game(f"discard potion {slot}")
+
+        return None
+
+    def _verify_expected_state(self, expected_state) -> dict:
+        """Verify current state against expected state.
+
+        Args:
+            expected_state: ExpectedState to verify against.
+
+        Returns:
+            Dictionary with 'match' boolean and optional 'message'.
+        """
+        if not self.sim:
+            return {'match': True}
+
+        current_state = self.sim.get_state()
+
+        # Check player HP
+        if hasattr(expected_state, 'player_hp_min') and expected_state.player_hp_min is not None:
+            if current_state.get('cur_hp', 0) < expected_state.player_hp_min:
+                return {'match': False, 'message': f"HP {current_state.get('cur_hp')} < min {expected_state.player_hp_min}"}
+
+        if hasattr(expected_state, 'player_hp_max') and expected_state.player_hp_max is not None:
+            if current_state.get('cur_hp', 0) > expected_state.player_hp_max:
+                return {'match': False, 'message': f"HP {current_state.get('cur_hp')} > max {expected_state.player_hp_max}"}
+
+        # Check block
+        if hasattr(expected_state, 'player_block') and expected_state.player_block is not None:
+            combat = current_state.get('combat_state', {})
+            actual_block = combat.get('player', {}).get('block', 0)
+            if actual_block != expected_state.player_block:
+                return {'match': False, 'message': f"Block {actual_block} != expected {expected_state.player_block}"}
+
+        # Check energy
+        if hasattr(expected_state, 'player_energy') and expected_state.player_energy is not None:
+            combat = current_state.get('combat_state', {})
+            actual_energy = combat.get('player', {}).get('energy', 0)
+            if actual_energy != expected_state.player_energy:
+                return {'match': False, 'message': f"Energy {actual_energy} != expected {expected_state.player_energy}"}
+
+        return {'match': True}
+
 
 def main():
     """Main entry point for the test runner."""
@@ -359,6 +500,12 @@ def main():
         type=str,
         default=None,
         help='Run specific test'
+    )
+    parser.add_argument(
+        '--scenario',
+        type=str,
+        default=None,
+        help='Run a specific YAML scenario file'
     )
     parser.add_argument(
         '--no-game',
@@ -437,6 +584,9 @@ def main():
                 ascension=args.ascension,
                 max_steps=args.steps
             )
+            runner.reporter.add_result(result)
+        elif args.scenario:
+            result = runner.run_scenario(args.scenario)
             runner.reporter.add_result(result)
         else:
             # Default: run quick test

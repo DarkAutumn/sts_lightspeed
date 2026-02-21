@@ -151,14 +151,23 @@ class GameController:
         time.sleep(0.1)
 
     def get_seed(self) -> int:
-        """Extract seed from game state.
+        """Extract seed from game state with proper int64 conversion.
 
         Returns:
-            Integer seed value.
+            Signed 64-bit integer seed value.
         """
+        # Import here to avoid circular imports
+        import sys
+        from pathlib import Path
+        tests_path = Path(__file__).parent.parent.parent / 'tests' / 'integration' / 'harness'
+        if str(tests_path) not in sys.path:
+            sys.path.insert(0, str(tests_path))
+        from seed_synchronizer import SeedSynchronizer
+
         state = self.get_state()
         game_state = state.get('game_state', {})
-        return game_state.get('seed', 0)
+        raw_seed = game_state.get('seed', 0)
+        return SeedSynchronizer.convert_seed_to_int64(raw_seed)
 
     def get_combat_state(self) -> Optional[Dict[str, Any]]:
         """Get current combat state if in combat.

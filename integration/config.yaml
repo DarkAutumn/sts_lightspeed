@@ -82,3 +82,21 @@ known_discrepancies:
   #   condition:
   #     character: WATCHER
   #   reason: "Watcher stances not yet implemented"
+
+# Game launcher configuration
+launcher:
+  # Platform: auto, mac, windows, linux
+  platform: auto
+
+  # Steam and game paths (Mac defaults)
+  steam_path: "~/Library/Application Support/Steam"
+  sts_path: "~/Library/Application Support/Steam/steamapps/common/SlayTheSpire"
+
+  # Mods required for testing
+  mods:
+    - "CommunicationMod"
+
+  # Launch behavior
+  auto_launch: false      # Set true to auto-launch game
+  timeout: 120.0          # Seconds to wait for game startup
+  terminate_on_exit: true # Close game when tests complete

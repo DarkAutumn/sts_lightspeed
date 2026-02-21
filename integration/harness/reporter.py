@@ -284,6 +284,99 @@ class Reporter:
         paths.append(self.generate_markdown_report())
         return paths
 
+    def generate_bug_reports(self, output_subdir: str = "bug_reports") -> List[Path]:
+        """Generate structured bug reports from failed test results.
+
+        Args:
+            output_subdir: Subdirectory within output_dir for bug reports.
+
+        Returns:
+            List of paths to generated bug report files.
+        """
+        # Import here to avoid circular imports
+        import sys
+        from pathlib import Path
+        tests_path = Path(__file__).parent.parent.parent / 'tests' / 'integration' / 'harness'
+        if str(tests_path) not in sys.path:
+            sys.path.insert(0, str(tests_path))
+        from bug_report import BugReportGenerator, BugReport
+
+        bug_dir = self.output_dir / output_subdir
+        bug_dir.mkdir(parents=True, exist_ok=True)
+
+        generator = BugReportGenerator()
+        report_paths = []
+
+        for result in self.results:
+            if result.passed:
+                continue
+
+            # Build action history from step results
+            action_history = []
+            for sr in result.step_results:
+                action_history.append({
+                    'step': sr.step,
+                    'game_command': sr.action.game_command,
+                    'sim_command': sr.action.sim_command,
+                    'action_type': sr.action.action_type
+                })
+
+            # Build discrepancies from comparison
+            discrepancies = []
+            if result.step_results:
+                # Get last failed step for discrepancies
+                for sr in reversed(result.step_results):
+                    if sr.comparison and sr.comparison.discrepancies:
+                        for disc in sr.comparison.discrepancies:
+                            discrepancies.append({
+                                'field': disc.field,
+                                'expected': disc.game_value,
+                                'actual': disc.sim_value,
+                                'severity': disc.severity.value,
+                                'message': disc.message
+                            })
+                        break
+
+            # Determine severity and category
+            severity = 'critical' if result.critical_failures > 0 else ('major' if result.major_failures > 0 else 'minor')
+            category = 'unknown'
+            if discrepancies:
+                field = discrepancies[0].get('field', '').lower()
+                if 'monster' in field:
+                    category = 'monster'
+                elif 'card' in field or 'hand' in field:
+                    category = 'card'
+                elif 'relic' in field:
+                    category = 'relic'
+                elif 'combat' in field or 'hp' in field or 'block' in field:
+                    category = 'combat'
+
+            # Create bug report
+            report = generator.create_report(
+                test_name=result.test_name,
+                seed=result.seed,
+                character=result.character,
+                ascension=result.ascension,
+                failing_step=result.total_steps,
+                action_history=action_history,
+                expected_state=result.final_sim_state or {},
+                actual_state=result.final_game_state or {},
+                discrepancies=discrepancies,
+                severity=severity,
+                category=category,
+                notes=result.error_message or ""
+            )
+
+            # Save in both formats
+            json_path = bug_dir / f"bug_{report.report_id}.json"
+            md_path = bug_dir / f"bug_{report.report_id}.md"
+
+            generator.save_report(report)
+            report_paths.append(json_path)
+            report_paths.append(md_path)
+
+        return report_paths
+
     def clear(self):
         """Clear all stored results."""
         self.results = []

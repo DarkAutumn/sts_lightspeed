@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 # Add build directory to path for the slaythespire module
-build_dir = Path(__file__).parent.parent.parent.parent / "build"
+build_dir = Path(__file__).parent.parent.parent / "build"
 if str(build_dir) not in sys.path:
     sys.path.insert(0, str(build_dir))
 
@@ -69,6 +69,35 @@ class SimulatorController:
         self.simulator.setup_game(seed, char_class, ascension)
         self._gc = self.simulator.gc
         self._initialized = True
+
+    def sync_from_game(self, game_controller: 'GameController') -> dict:
+        """Synchronize simulator state from the real game.
+
+        Reads the game state, extracts seed and parameters, and initializes
+        the simulator to match.
+
+        Args:
+            game_controller: Connected GameController instance.
+
+        Returns:
+            Dictionary with sync information (seed, character, ascension, verified).
+
+        Raises:
+            SeedSynchronizationError: If synchronization fails.
+        """
+        # Import here to avoid circular imports
+        import sys
+        from pathlib import Path
+        tests_path = Path(__file__).parent.parent.parent / 'tests' / 'integration' / 'harness'
+        if str(tests_path) not in sys.path:
+            sys.path.insert(0, str(tests_path))
+        from seed_synchronizer import SeedSynchronizer, SeedSynchronizationError
+
+        synchronizer = SeedSynchronizer()
+        return synchronizer.sync_from_game(
+            simulator=self,
+            game_controller=game_controller
+        )
 
     def take_action(self, action: str):
         """Execute ConsoleSimulator command.
