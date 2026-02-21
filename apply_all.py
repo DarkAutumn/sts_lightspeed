@@ -5,19 +5,9 @@ def combine_files(filenames):
             content.append(file.read())
     return '\n'.join(content)
 
-attacks_code = combine_files(['silent_attacks.cpp', 'defect_attacks.cpp'])
-skills_code = combine_files(['silent_skills1.cpp', 'silent_skills2.cpp', 'defect_skills.cpp'])
-powers_code = combine_files(['silent_powers.cpp', 'defect_powers.cpp'])
-
-# Add BACKSTAB to attacks
-backstab_str = """
-        case CardId::BACKSTAB: {
-            const int dmg = calculateCardDamage(c, t, up ? 15 : 11);
-            addToBot( Actions::AttackEnemy(t, dmg) );
-            break;
-        }
-"""
-attacks_code += backstab_str
+attacks_code = combine_files(['watcher_attacks.cpp'])
+skills_code = combine_files(['watcher_skills.cpp'])
+powers_code = combine_files(['watcher_powers.cpp'])
 
 with open('src/combat/BattleContext.cpp', 'r') as f:
     cpp_code = f.read()
@@ -40,6 +30,6 @@ if len(parts) >= 4:
 
     with open('src/combat/BattleContext.cpp', 'w') as f:
         f.write(new_code)
-    print("Injected Silent and Defect cards into BattleContext.cpp successfully.")
+    print("Injected Silent, Defect, and Watcher cards into BattleContext.cpp successfully.")
 else:
     print(f"Error: expected at least 4 occurrences of target, found {len(parts) - 1}")

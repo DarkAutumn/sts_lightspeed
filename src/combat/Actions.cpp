@@ -152,16 +152,35 @@ Action Actions::ChangeStance(Stance stance) {
     return {[=] (BattleContext &bc) {
         if (bc.player.stance == stance) return;
 
+        const Stance oldStance = bc.player.stance;
+
         // Exit effects
-        if (bc.player.stance == Stance::CALM) {
+        if (oldStance == Stance::CALM) {
             bc.addToTop(Actions::GainEnergy(2));
+        }
+
+        // VIOLET_LOTUS: When exiting Wrath to enter Calm, gain 1 energy
+        if (oldStance == Stance::WRATH && stance == Stance::CALM) {
+            if (bc.player.hasRelic<R::VIOLET_LOTUS>()) {
+                bc.addToTop(Actions::GainEnergy(1));
+            }
         }
 
         bc.player.stance = stance;
 
+        // MENTAL_FORTRESS: Gain block on stance change
+        if (bc.player.hasStatus<PS::MENTAL_FORTRESS>()) {
+            bc.addToTop(Actions::GainBlock(bc.player.getStatus<PS::MENTAL_FORTRESS>()));
+        }
+
         // Enter effects
         if (stance == Stance::DIVINITY) {
             bc.addToTop(Actions::GainEnergy(3));
+        }
+
+        // RUSHDOWN: Draw 1 when entering Wrath
+        if (stance == Stance::WRATH && bc.player.hasStatus<PS::RUSHDOWN>()) {
+            bc.addToTop(Actions::DrawCards(1));
         }
     }};
 }
@@ -1070,6 +1089,31 @@ Action Actions::ToolboxAction() {
         bc.cardSelectInfo.discovery_CopyCount() = 1;
         bc.cardSelectInfo.discovery_Cards() =
                 generateDiscoveryCards(bc.cardRandomRng, bc.player.cc, CardType::STATUS); // status is mapped to colorless
+    }};
+}
+
+Action Actions::ScryAction(int amount) {
+    return {[=] (BattleContext &bc) {
+        if (bc.cards.drawPile.empty() && bc.cards.discardPile.empty()) {
+            return;
+        }
+
+        if (bc.cards.drawPile.size() < amount) {
+            bc.cards.moveDiscardPileIntoToDrawPile();
+        }
+
+        // NIRVANA: Gain Mantra when you Scry
+        if (bc.player.hasStatus<PS::NIRVANA>()) {
+            int mantraGain = bc.player.getStatus<PS::NIRVANA>() * amount;
+            bc.addToTop(Actions::BuffPlayer<PS::MANTRA>(mantraGain));
+        }
+
+        const int available = std::min(amount, static_cast<int>(bc.cards.drawPile.size()));
+        bc.inputState = InputState::CARD_SELECT;
+        bc.cardSelectInfo.cardSelectTask = CardSelectTask::SCRY;
+        bc.cardSelectInfo.pickCount = available;
+        bc.cardSelectInfo.canPickAnyNumber = true;
+        bc.cardSelectInfo.canPickZero = true;
     }};
 }
 

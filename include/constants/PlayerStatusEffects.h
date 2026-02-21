@@ -44,12 +44,14 @@ enum class PlayerStatus : std::uint8_t {
 
     // Counter
     AMPLIFY,
+    BLASPHEMY,
     BLUR,
     BUFFER,
     COLLECT,
     DOUBLE_TAP,
     DUPLICATION,
     ECHO_FORM,
+    EXTRA_TURN,
     FREE_ATTACK_POWER,
     REBOUND,
     MANTRA,
@@ -65,6 +67,7 @@ enum class PlayerStatus : std::uint8_t {
     DARK_EMBRACE,
     DEMON_FORM,
     DEVA,
+    DEVA_FORM,
     DEVOTION,
     DRAW_CARD_NEXT_TURN,
     ENERGIZED,
@@ -83,8 +86,10 @@ enum class PlayerStatus : std::uint8_t {
     LOOP,
     MAGNETISM,
     MAYHEM,
+    MENTAL_FORTRESS,
     METALLICIZE,
     NEXT_TURN_BLOCK,
+    NIRVANA,
     NOXIOUS_FUMES,
     OMEGA,
     PANACHE,
@@ -93,9 +98,13 @@ enum class PlayerStatus : std::uint8_t {
     RAGE,
     REGEN,
     RITUAL,
+    RUSHDOWN,
     RUPTURE,
     SADISTIC,
+    SIMMERING_FURY,
+    SPIRIT_SHIELD,
     STATIC_DISCHARGE,
+    STUDY,
     THORNS,
     THOUSAND_CUTS,
     TOOLS_OF_THE_TRADE,
@@ -116,7 +125,7 @@ enum class PlayerStatus : std::uint8_t {
 typedef PlayerStatus PS;
 
 static constexpr const char* const playerStatusStrings[] {
-        "INVALID","Double Damage","Draw Reduction","Frail","Intangible","Vulnerable","Weak","Bias","Confused","Constricted","Entangled","Fasting","Hex","Lose Dexterity","Lose Strength","No Block","No Draw","Wraith Form","Barricade","Blasphemer","Corruption","Electro","Surrounded","Master Reality","Pen Nib","Wrath Next Turn","Amplify","Blur","Buffer","Collect","Double Tap","Duplication","Echo Form","Free Attack Power","Rebound","Mantra","Accuracy","After Image","Battle Hymn","Brutality","Burst","Combust","Creative Ai","Dark Embrace","Demon Form","Deva","Devotion","Draw Card Next Turn","Energized","Envenom","Establishment","Evolve","Feel No Pain","Fire Breathing","Flame Barrier","Focus","Foresight","Hello World","Infinite Blades","Juggernaut","Like Water","Loop","Magnetism","Mayhem","Metallicize","Next Turn Block","Noxious Fumes","Omega","Panache","Phantasmal","Plated Armor","Rage","Regen","Ritual","Rupture","Sadistic","Static Discharge","Thorns","Thousand Cuts","Tools Of The Trade","Vigor","Wave Of The Hand","Equilibrium","Artifact","Dexterity","Strength","The Bomb","Retain Cards"
+        "INVALID","Double Damage","Draw Reduction","Frail","Intangible","Vulnerable","Weak","Bias","Confused","Constricted","Entangled","Fasting","Hex","Lose Dexterity","Lose Strength","No Block","No Draw","Wraith Form","Barricade","Blasphemer","Corruption","Electro","Surrounded","Master Reality","Pen Nib","Wrath Next Turn","Amplify","Blasphemy","Blur","Buffer","Collect","Double Tap","Duplication","Echo Form","Extra Turn","Free Attack Power","Rebound","Mantra","Accuracy","After Image","Battle Hymn","Brutality","Burst","Combust","Creative Ai","Dark Embrace","Demon Form","Deva","Deva Form","Devotion","Draw Card Next Turn","Energized","Envenom","Establishment","Evolve","Feel No Pain","Fire Breathing","Flame Barrier","Focus","Foresight","Hello World","Infinite Blades","Juggernaut","Like Water","Loop","Magnetism","Mayhem","Mental Fortress","Metallicize","Next Turn Block","Nirvana","Noxious Fumes","Omega","Panache","Phantasmal","Plated Armor","Rage","Regen","Ritual","Rushdown","Rupture","Sadistic","Simmering Fury","Spirit Shield","Static Discharge","Study","Thorns","Thousand Cuts","Tools Of The Trade","Vigor","Wave Of The Hand","Equilibrium","Artifact","Dexterity","Strength","The Bomb","Retain Cards"
 };
 
 static constexpr const char* const playerStatusEnumStrings[] {

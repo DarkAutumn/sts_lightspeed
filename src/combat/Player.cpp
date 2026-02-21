@@ -767,8 +767,22 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
                 removeStatus<PS::DRAW_CARD_NEXT_TURN>();
                 break;
 
+            case PS::NIRVANA:
+                bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(pair.second) );
+                // Scry triggers nirvana in ScryAction
+                break;
+
             case PS::NOXIOUS_FUMES:
                 bc.addToBot( Actions::DebuffAllEnemy<MS::POISON>(pair.second) );
+                break;
+
+            case PS::SIMMERING_FURY:
+                bc.addToBot( Actions::ChangeStance(Stance::WRATH) );
+                decrementStatus<PS::SIMMERING_FURY>();
+                break;
+
+            case PS::STUDY:
+                bc.addToBot( Actions::DrawCards(pair.second) );
                 break;
 
             case PS::TOOLS_OF_THE_TRADE:
