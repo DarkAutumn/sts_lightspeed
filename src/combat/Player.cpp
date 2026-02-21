@@ -139,7 +139,7 @@ void Player::channelOrb(BattleContext &bc, Orb orb) {
 
 void Player::evokeOrb(BattleContext &bc) {
     if (orbSlots == 0 || orbs[0] == Orb::EMPTY) return;
-    
+
     Orb evoked = orbs[0];
     int data = orbData[0];
 
@@ -152,35 +152,44 @@ void Player::evokeOrb(BattleContext &bc) {
     orbData[orbSlots - 1] = 0;
     ++emptyOrbCount;
 
+    // Determine evoke count (AMPLIFY makes orb evoke twice)
+    int evokeCount = 1;
+    if (hasStatus<PS::AMPLIFY>()) {
+        evokeCount += getStatus<PS::AMPLIFY>();
+        decrementStatus<PS::AMPLIFY>(evokeCount - 1);
+    }
+
     // Trigger evoke effect
     int focus = getStatus<PS::FOCUS>();
-    switch (evoked) {
-        case Orb::LIGHTNING:
-            bc.addToTop(Actions::DamageRandomEnemy(8 + focus));
-            break;
-        case Orb::FROST:
-            bc.addToTop(Actions::GainBlock(5 + focus));
-            break;
-        case Orb::DARK:
-            if (!bc.monsters.areMonstersBasicallyDead()) {
-                int lowestHpIdx = -1;
-                int lowestHp = 99999;
-                for (int i = 0; i < bc.monsters.monsterCount; ++i) {
-                    if (bc.monsters.arr[i].isTargetable() && bc.monsters.arr[i].curHp < lowestHp) {
-                        lowestHp = bc.monsters.arr[i].curHp;
-                        lowestHpIdx = i;
+    for (int e = 0; e < evokeCount; ++e) {
+        switch (evoked) {
+            case Orb::LIGHTNING:
+                bc.addToTop(Actions::DamageRandomEnemy(8 + focus));
+                break;
+            case Orb::FROST:
+                bc.addToTop(Actions::GainBlock(5 + focus));
+                break;
+            case Orb::DARK:
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    int lowestHpIdx = -1;
+                    int lowestHp = 99999;
+                    for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                        if (bc.monsters.arr[i].isTargetable() && bc.monsters.arr[i].curHp < lowestHp) {
+                            lowestHp = bc.monsters.arr[i].curHp;
+                            lowestHpIdx = i;
+                        }
+                    }
+                    if (lowestHpIdx != -1) {
+                        bc.addToTop(Actions::DamageEnemy(lowestHpIdx, data));
                     }
                 }
-                if (lowestHpIdx != -1) {
-                    bc.addToTop(Actions::DamageEnemy(lowestHpIdx, data));
-                }
-            }
-            break;
-        case Orb::PLASMA:
-            bc.addToTop(Actions::GainEnergy(2));
-            break;
-        default:
-            break;
+                break;
+            case Orb::PLASMA:
+                bc.addToTop(Actions::GainEnergy(2));
+                break;
+            default:
+                break;
+        }
     }
 }
 

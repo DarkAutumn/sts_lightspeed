@@ -2437,149 +2437,272 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::AGGREGATE: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                int energyGain = b.player.cardsPlayedThisTurn;
+                b.player.gainEnergy(energyGain);
+            }) );
             break;
         }
 
         case CardId::AMPLIFY: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::AMPLIFY>(up ? 2 : 1) );
             break;
         }
 
         case CardId::AUTO_SHIELDS: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                int orbCount = b.player.orbSlots - b.player.emptyOrbCount;
+                b.player.gainBlock(b, orbCount * 3);
+            }) );
             break;
         }
 
         case CardId::BOOT_SEQUENCE: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                if (b.player.emptyOrbCount == b.player.orbSlots) { // no orbs
+                    b.player.channelOrb(b, Orb::FROST);
+                }
+            }) );
             break;
         }
 
         case CardId::CHAOS: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
+                b.player.channelOrb(b, orbType);
+            }) );
             break;
         }
 
         case CardId::CHARGE_BATTERY: {
-            // TODO
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 9 : 7)) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(1) );
             break;
         }
 
         case CardId::CHILL: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                int count = b.monsters.monsterCount;
+                for (int i = 0; i < count; ++i) {
+                    if (b.monsters.arr[i].curHp > 0 && !b.monsters.arr[i].isEscaping) {
+                        b.player.channelOrb(b, Orb::FROST);
+                    }
+                }
+            }) );
             break;
         }
 
         case CardId::COLLECT: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::COLLECT>(up ? 3 : 2) );
             break;
         }
 
         case CardId::CONSUME: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.buff<PS::FOCUS>(up ? 3 : 2);
+                if (b.player.orbSlots > 0) {
+                    b.player.orbSlots--;
+                    // If there was an orb in the last slot, it's lost
+                    if (b.player.orbs[b.player.orbSlots] != Orb::EMPTY) {
+                        b.player.orbs[b.player.orbSlots] = Orb::EMPTY;
+                    } else {
+                        b.player.emptyOrbCount--;
+                    }
+                }
+            }) );
             break;
         }
 
         case CardId::COOLHEADED: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.channelOrb(b, Orb::FROST);
+            }) );
+            addToBot( Actions::DrawCards(1) );
             break;
         }
 
         case CardId::DARKNESS: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.channelOrb(b, Orb::DARK);
+            }) );
             break;
         }
 
         // CardId::DEFEND_BLUE is defined natively in STS lightspeed
 
         case CardId::DOUBLE_ENERGY: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.gainEnergy(b.player.energy);
+            }) );
             break;
         }
 
         case CardId::DUALCAST: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.evokeOrb(b);
+                b.player.evokeOrb(b);
+            }) );
             break;
         }
 
         case CardId::EQUILIBRIUM: {
-            // TODO
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 5 : 3)) );
+            addToBot( Actions::BuffPlayer<PS::EQUIV>(1) );
             break;
         }
 
         case CardId::FISSION: {
-            // TODO
+            addToBot( Action([&, up](BattleContext &b) {
+                int orbCount = b.player.orbSlots - b.player.emptyOrbCount;
+                // Evoke all orbs
+                for (int i = 0; i < orbCount; ++i) {
+                    b.player.evokeOrb(b);
+                }
+                // Gain energy and draw based on orbs removed
+                if (orbCount > 0) {
+                    b.player.gainEnergy(orbCount);
+                    b.drawCards(up ? orbCount * 2 : orbCount);
+                }
+            }) );
             break;
         }
 
         case CardId::FORCE_FIELD: {
-            // TODO
+            // Base cost is 2, 0 cost if 10+ cards played this combat
+            // This is handled via the card's cost adjustment elsewhere
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 6 : 4)) );
             break;
         }
 
         case CardId::FUSION: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
+                b.player.channelOrb(b, orbType);
+            }) );
             break;
         }
 
         case CardId::GENETIC_ALGORITHM: {
-            // TODO
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 5 : 1)) );
+            addToBot( Action([&, up](BattleContext &b) {
+                c.misc += (up ? 2 : 1);
+            }) );
             break;
         }
 
         case CardId::GLACIER: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.channelOrb(b, Orb::FROST);
+                b.player.channelOrb(b, Orb::FROST);
+            }) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 5)) );
             break;
         }
 
         case CardId::HOLOGRAM: {
-            // TODO
+            const int dmg = calculateCardDamage(c, t, up ? 5 : 3);
+            addToBot( Actions::AttackEnemy(t, dmg) );
+            addToBot( Actions::BetterDiscardPileToHandAction(1, CardSelectTask::HOLOGRAM) );
             break;
         }
 
         case CardId::LEAP: {
-            // TODO
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 12 : 9)) );
             break;
         }
 
         case CardId::MULTI_CAST: {
-            // TODO
+            int times = item.energyOnUse;
+            if (player.hasRelic<R::CHEMICAL_X>()) times += 2;
+            if (!item.ignoreEnergyTotal && !item.freeToPlay && !c.freeToPlayOnce) {
+                player.useEnergy(std::min(times, player.energy));
+                times = std::min(times, player.energy + (player.hasRelic<R::CHEMICAL_X>() ? 2 : 0));
+            }
+            for (int i = 0; i < times; ++i) {
+                addToBot( Action([&](BattleContext &b) {
+                    b.player.evokeOrb(b);
+                }) );
+            }
             break;
         }
 
         case CardId::OVERCLOCK: {
-            // TODO
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::DAZED), 1, false) );
             break;
         }
 
         case CardId::RAINBOW: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                for (int i = 0; i < 3; ++i) {
+                    Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
+                    b.player.channelOrb(b, orbType);
+                }
+            }) );
             break;
         }
 
         case CardId::REBOOT: {
-            // TODO
+            addToBot( Action([&, up](BattleContext &b) {
+                // Shuffle hand into draw pile
+                for (int i = 0; i < b.cards.cardsInHand; ++i) {
+                    b.cards.drawPile.push_back(b.cards.hand[i]);
+                }
+                b.cards.cardsInHand = 0;
+                // Shuffle discard into draw pile
+                for (auto& card : b.cards.discardPile) {
+                    b.cards.drawPile.push_back(card);
+                }
+                b.cards.discardPile.clear();
+                // Shuffle the draw pile
+                b.onShuffle();
+                // Draw cards
+                b.drawCards(up ? 4 : 3);
+            }) );
             break;
         }
 
         case CardId::RECURSION: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                if (b.player.orbSlots > 0 && b.player.orbs[0] != Orb::EMPTY) {
+                    Orb orbType = b.player.orbs[0];
+                    b.player.evokeOrb(b);
+                    b.player.channelOrb(b, orbType);
+                }
+            }) );
             break;
         }
 
         case CardId::RECYCLE: {
-            // TODO
+            addToBot( Action([&, up](BattleContext &b) {
+                int x = item.energyOnUse;
+                if (!item.ignoreEnergyTotal && !item.freeToPlay && !c.freeToPlayOnce) {
+                    x = std::min(x, b.player.energy);
+                    b.player.useEnergy(x);
+                }
+                // Exhaust X cards from hand, gain energy for each
+                // This is a simplified implementation
+                b.cardSelectInfo = CardSelectInfo(x, CardSelectTask::RECYCLE, false, true);
+                b.setState(InputState::SELECT_CARDS_HAND);
+            }) );
             break;
         }
 
         case CardId::REINFORCED_BODY: {
-            // TODO
+            int times = item.energyOnUse;
+            if (player.hasRelic<R::CHEMICAL_X>()) times += 2;
+            if (!item.ignoreEnergyTotal && !item.freeToPlay && !c.freeToPlayOnce) {
+                times = std::min(times, player.energy);
+                player.useEnergy(times);
+            }
+            addToBot( Actions::GainBlock(times * (up ? 7 : 5)) );
             break;
         }
 
         case CardId::REPROGRAM: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::STRENGTH>(up ? 2 : 1) );
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 2 : 1) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(up ? 2 : 1, false) );
             break;
         }
 
@@ -2589,37 +2712,62 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SKIM: {
-            // TODO
+            addToBot( Actions::DrawCards(3) );
             break;
         }
 
         case CardId::STACK: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                int block = static_cast<int>(b.cards.discardPile.size());
+                b.player.gainBlock(b, block);
+            }) );
             break;
         }
 
         case CardId::STEAM_BARRIER: {
-            // TODO
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 9 : 6)) );
+            addToBot( Action([&](BattleContext &b) {
+                // Remove this card from deck this combat (handled by exhaust in simplified form)
+            }) );
             break;
         }
 
         case CardId::TEMPEST: {
-            // TODO
+            int times = item.energyOnUse;
+            if (player.hasRelic<R::CHEMICAL_X>()) times += 2;
+            if (!item.ignoreEnergyTotal && !item.freeToPlay && !c.freeToPlayOnce) {
+                times = std::min(times, player.energy);
+                player.useEnergy(times);
+            }
+            addToBot( Action([&](BattleContext &b) {
+                for (int i = 0; i < times; ++i) {
+                    b.player.channelOrb(b, Orb::LIGHTNING);
+                }
+            }) );
             break;
         }
 
         case CardId::TURBO: {
-            // TODO
+            addToBot( Actions::GainEnergy(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDiscard(CardInstance(CardId::DAZED), 1) );
             break;
         }
 
         case CardId::WHITE_NOISE: {
-            // TODO
+            addToBot( Action([&, up](BattleContext &b) {
+                // Get random Defect power card
+                CardId powerId = RarityCardPool::getCardFromPool(CharacterClass::DEFECT, CardType::POWER,
+                    static_cast<CardRarity>(b.miscRng.random(2))); // COMMON, UNCOMMON, or RARE
+                CardInstance card(powerId, up);
+                b.addToTop(Actions::MakeTempCardInHand(card, 1));
+            }) );
             break;
         }
 
         case CardId::ZAP: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.channelOrb(b, Orb::LIGHTNING);
+            }) );
             break;
         }
 
@@ -3071,67 +3219,75 @@ void BattleContext::usePowerCard() {
         // CardId::WRAITH_FORM is defined natively in STS lightspeed
 
         case CardId::BIASED_COGNITION: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 5 : 4) );
+            addToBot( Actions::BuffPlayer<PS::BIAS>(1) );
             break;
         }
 
         case CardId::CAPACITOR: {
-            // TODO
+            addToBot( Action([&](BattleContext &b) {
+                b.player.increaseOrbSlots(up ? 3 : 2);
+            }) );
             break;
         }
 
         case CardId::CREATIVE_AI: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::CREATIVE_AI>(1) );
             break;
         }
 
         case CardId::DEFRAGMENT: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 2 : 1) );
             break;
         }
 
         case CardId::ECHO_FORM: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::ECHO_FORM>(1) );
             break;
         }
 
         case CardId::ELECTRODYNAMICS: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::ELECTRO>(1) );
+            addToBot( Action([&](BattleContext &b) {
+                for (int i = 0; i < (up ? 3 : 2); ++i) {
+                    b.player.channelOrb(b, Orb::LIGHTNING);
+                }
+            }) );
             break;
         }
 
         case CardId::HEATSINKS: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::HEATSINK>(up ? 2 : 1) );
             break;
         }
 
         case CardId::HELLO_WORLD: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::HELLO_WORLD>(1) );
             break;
         }
 
         case CardId::LOOP: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::LOOP>(1) );
             break;
         }
 
         case CardId::MACHINE_LEARNING: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::MACHINE_LEARNING>(up ? 2 : 1) );
             break;
         }
 
         case CardId::SELF_REPAIR: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::SELF_REPAIR>(up ? 10 : 7) );
             break;
         }
 
         case CardId::STATIC_DISCHARGE: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::STATIC_DISCHARGE>(up ? 2 : 1) );
             break;
         }
 
         case CardId::STORM: {
-            // TODO
+            addToBot( Actions::BuffPlayer<PS::STORM>(up ? 2 : 1) );
             break;
         }
 

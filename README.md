@@ -18,6 +18,9 @@ For tree search and simulation of the popular rogue-like deckbuilder game Slay T
 * All enemies
 * All relics
 * All Ironclad cards
+* All Silent cards
+* All Defect cards (including full orb system)
+* All Watcher cards
 * All colorless cards
 * Everything outside of combat / all acts
 

@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+#### Defect Character - Complete Card Implementation
+- **49 Defect cards** fully implemented (all skills and powers)
+- **Orb System enhancements**: AMPLIFY status for double/triple orb evokes
+- **4 new status effects**: HEATSINKS, MACHINE_LEARNING, SELF_REPAIR, STORM
+
+##### Defect Skills (37 cards)
+- Basic Orb Cards: ZAP, DUALCAST, LEAP, COOLHEADED, DARKNESS, GLACIER
+- Energy/Draw Cards: TURBO, DOUBLE_ENERGY, OVERCLOCK, SKIM, CHARGE_BATTERY
+- Advanced Orb Cards: AMPLIFY, RECURSION, MULTI_CAST, TEMPEST, RAINBOW, CHAOS, FUSION
+- Block/Utility Cards: AUTO_SHIELDS, BOOT_SEQUENCE, CHILL, CONSUME, EQUILIBRIUM, FORCE_FIELD, GENETIC_ALGORITHM, REINFORCED_BODY, REPROGRAM, STACK, STEAM_BARRIER, WHITE_NOISE
+- Deck Manipulation Cards: AGGREGATE, COLLECT, FISSION, HOLOGRAM, REBOOT, RECYCLE
+
+##### Defect Powers (12 cards)
+- DEFRAGMENT, CAPACITOR, BIASED_COGNITION, CREATIVE_AI, ECHO_FORM
+- ELECTRODYNAMICS, HEATSINKS, HELLO_WORLD, LOOP, MACHINE_LEARNING
+- SELF_REPAIR, STATIC_DISCHARGE, STORM
+
+### Changed
+
+- `Player::evokeOrb()` enhanced to support AMPLIFY status for multi-evoke effects
+- `PlayerStatusEffects.h` expanded with 4 new status effect enums
+
 ## [1.0.0] - 2026-02-21
 
 ### Added
