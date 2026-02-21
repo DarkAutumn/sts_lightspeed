@@ -1792,15 +1792,11 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::RAGNAROK: {
-            const int totalDmg = up ? 36 : 31;
-            int remaining = totalDmg;
-            for (int i = 0; i < monsters.monsterCount; ++i) {
-                if (!monsters.arr[i].isDeadOrEscaped()) {
-                    int dmg = calculateCardDamage(c, i, totalDmg); // Random split simplified
-                    addToBot( Actions::AttackEnemy(i, dmg) );
-                }
+            const int dmg = calculateCardDamage(c, -1, up ? 7 : 5);
+            for (int i = 0; i < (up ? 6 : 5); ++i) {
+                addToBot( Actions::DamageRandomEnemy(dmg) );
             }
-            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::SMITE, up), up ? 3 : 3, true) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SMITE, up, 1) );
             break;
         }
 
@@ -2229,6 +2225,11 @@ void BattleContext::useSkillCard() {
             break;
         }
 
+        case CardId::BLESSING: {
+            addToBot( Actions::GainEnergy(up ? 4 : 3) );
+            break;
+        }
+
         case CardId::BLUR: {
             addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
             addToBot( Actions::BuffPlayer<PS::BLUR>(1) );
@@ -2634,9 +2635,16 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::MEDITATE: {
-            // Simplified: just gain mantra
-            addToBot( Actions::BuffPlayer<PS::MANTRA>(up ? 2 : 1) );
-            // Full implementation would put a card from discard to hand with retain
+            addToBot( Actions::BuffPlayer<PS::MANTRA>(up ? 4 : 3) );
+            addToBot( Action([&](BattleContext &b) {
+                if (!b.cards.discardPile.empty()) {
+                    b.cardSelectInfo.cardSelectTask = CardSelectTask::MEDITATE;
+                    b.cardSelectInfo.pickCount = 1;
+                    b.cardSelectInfo.canPickZero = false;
+                    b.cardSelectInfo.canPickAnyNumber = false;
+                    b.inputState = InputState::CARD_SELECT;
+                }
+            }));
             break;
         }
 
@@ -2710,8 +2718,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::PRAY: {
             addToBot( Actions::BuffPlayer<PS::MANTRA>(up ? 4 : 3) );
-            // BLESSING card doesn't exist in this implementation, skip adding it
-            // addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::BLESSING, up), 1, true) );
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::BLESSING, up), 1, true) );
             break;
         }
 
@@ -2837,11 +2844,9 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::FOREIGN_INFLUENCE: {
-            addToBot( Action([&, up](BattleContext &b) {
-                // Add a random attack to top of draw pile (simplified)
-                auto attack = CardInstance(CardId::STRIKE_RED, up);
-                b.addToTop(Actions::MakeTempCardInDrawPile(attack, 1, false));
-            }));
+            // Add 1 of 3 random attacks to hand (simplified: uses discovery mechanism which sets cost to 0)
+            // Real game: player chooses from 3 random attacks, card keeps original cost
+            addToBot( Actions::DiscoveryAction(CardType::ATTACK, 1) );
             break;
         }
 

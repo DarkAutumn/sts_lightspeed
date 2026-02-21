@@ -488,7 +488,8 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
             bc->chooseDiscardCards(getIdxListFromString(action));
             break;
 
-        case CardSelectTask::MEDITATE:  // todo
+        case CardSelectTask::MEDITATE:
+            bc->chooseDiscardToHandCard(std::stoi(action), false);
             break;
 
         case CardSelectTask::NIGHTMARE:  // todo

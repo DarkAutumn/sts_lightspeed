@@ -457,6 +457,7 @@ PYBIND11_MODULE(slaythespire, m) {
         .value("BIASED_COGNITION", CardId::BIASED_COGNITION)
         .value("BITE", CardId::BITE)
         .value("BLADE_DANCE", CardId::BLADE_DANCE)
+        .value("BLESSING", CardId::BLESSING)
         .value("BLASPHEMY", CardId::BLASPHEMY)
         .value("BLIND", CardId::BLIND)
         .value("BLIZZARD", CardId::BLIZZARD)
