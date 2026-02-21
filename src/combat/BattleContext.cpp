@@ -250,7 +250,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::CRACKED_CORE:
-                p.channelOrb(Orb::LIGHTNING);
+                p.channelOrb(*this, Orb::LIGHTNING);
                 break;
 
             case R::CURSED_KEY:
@@ -300,7 +300,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::NUCLEAR_BATTERY:
-                p.channelOrb(Orb::FUSION);
+                p.channelOrb(*this, Orb::PLASMA);
                 break;
 
             case R::ODDLY_SMOOTH_STONE:
@@ -344,7 +344,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::SYMBIOTIC_VIRUS:
-                p.channelOrb(Orb::DARK);
+                p.channelOrb(*this, Orb::DARK);
                 break;
 
             case R::TEARDROP_LOCKET:
@@ -2039,7 +2039,7 @@ void BattleContext::callEndOfTurnActions() {
 
     if (player.hasRelic<R::FROZEN_CORE>()) {
         if (player.hasEmptyOrb()) {
-            player.channelOrb(Orb::FROST);
+            player.channelOrb(*this, Orb::FROST);
         }
     }
 
@@ -2510,6 +2510,22 @@ void BattleContext::discardAtEndOfTurnHelper() {
         ++player.cardsDiscardedThisTurn;
     }
     cards.cardsInHand = 0;
+}
+
+void BattleContext::chooseSetupCard(int handIdx) {
+    auto c = cards.hand[handIdx];
+    cards.removeFromHandAtIdx(handIdx);
+    c.costForTurn = 0;
+    cards.drawPile.push_back(c);
+}
+
+void BattleContext::chooseDiscardCards(const fixed_list<int,10> &idxs) {
+    for (int i=0; i<idxs.size(); ++i) {
+        auto c = cards.hand[idxs[i]];
+        cards.removeFromHandAtIdx(idxs[i]);
+        cards.moveToDiscardPile(c);
+        onManualDiscard(c);
+    }
 }
 
 void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {

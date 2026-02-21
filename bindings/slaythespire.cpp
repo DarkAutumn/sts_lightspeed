@@ -26,6 +26,7 @@ PYBIND11_MODULE(slaythespire, m) {
     m.def("play", &sts::py::play, "play Slay the Spire Console");
     m.def("get_seed_str", &SeedHelper::getString, "gets the integral representation of seed string used in the game ui");
     m.def("get_seed_long", &SeedHelper::getLong, "gets the seed string representation of an integral seed");
+    m.def("get_potion_name", &sts::getPotionName, "Get the string name of a potion");
     m.def("getNNInterface", &sts::NNInterface::getInstance, "gets the NNInterface object");
 
     pybind11::class_<NNInterface> nnInterface(m, "NNInterface");
@@ -68,6 +69,13 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_property_readonly("relics",
                [] (const GameContext &gc) { return std::vector(gc.relics.relics); },
                "returns a copy of the list of relics"
+        )
+        .def_property_readonly("potion_count", [](const GameContext &gc) { return gc.potionCount; })
+        .def_property_readonly("potions",
+            [](const GameContext &gc) {
+                return std::vector<Potion>(gc.potions.begin(), gc.potions.begin() + gc.potionCapacity);
+            },
+            "returns a copy of the list of potions currently held"
         )
         .def("__repr__", [](const GameContext &gc) {
             std::ostringstream oss;
@@ -827,6 +835,121 @@ PYBIND11_MODULE(slaythespire, m) {
         .value("CIRCLET", RelicId::CIRCLET)
         .value("RED_CIRCLET", RelicId::RED_CIRCLET)
         .value("INVALID", RelicId::INVALID);
+
+    // Bindings for Combat State
+    pybind11::class_<sts::CardInstance>(m, "CardInstance")
+        .def_readonly("id", &sts::CardInstance::id)
+        .def_readonly("unique_id", &sts::CardInstance::uniqueId)
+        .def_readonly("cost", &sts::CardInstance::cost)
+        .def_readonly("cost_for_turn", &sts::CardInstance::costForTurn)
+        .def_property_readonly("name", [](const sts::CardInstance &c) { return c.getName(); })
+        .def("is_upgraded", &sts::CardInstance::isUpgraded)
+        .def("requires_target", &sts::CardInstance::requiresTarget);
+        
+    pybind11::class_<sts::Monster>(m, "Monster")
+        .def_readonly("cur_hp", &sts::Monster::curHp)
+        .def_readonly("max_hp", &sts::Monster::maxHp)
+        .def_readonly("block", &sts::Monster::block)
+        .def_property_readonly("intent", [](const sts::Monster &m) { return static_cast<int>(m.moveHistory[0]); })
+        .def("is_dying", &sts::Monster::isDying)
+        .def("is_escaping", &sts::Monster::isEscaping)
+        .def("is_dead_or_escaped", &sts::Monster::isDeadOrEscaped)
+        .def("is_targetable", &sts::Monster::isTargetable);
+        
+    pybind11::class_<sts::MonsterGroup>(m, "MonsterGroup")
+        .def_readonly("monster_count", &sts::MonsterGroup::monsterCount)
+        .def_property_readonly("arr", [](const sts::MonsterGroup &mg) {
+             std::vector<sts::Monster> ret;
+             for(int i=0; i<mg.monsterCount; ++i) ret.push_back(mg.arr[i]);
+             return ret;
+        });
+        
+    pybind11::class_<sts::Player>(m, "Player")
+        .def_readonly("cur_hp", &sts::Player::curHp)
+        .def_readonly("max_hp", &sts::Player::maxHp)
+        .def_readonly("block", &sts::Player::block)
+        .def_readonly("energy", &sts::Player::energy);
+        
+    pybind11::class_<sts::CardManager>(m, "CardManager")
+        .def_property_readonly("hand", [](const sts::CardManager &cm) {
+             std::vector<sts::CardInstance> ret;
+             for(int i=0; i<cm.cardsInHand; ++i) ret.push_back(cm.hand[i]);
+             return ret;
+        })
+        .def_property_readonly("draw_pile", [](const sts::CardManager &cm) {
+             std::vector<sts::CardInstance> ret;
+             for(int i=0; i<cm.drawPile.size(); ++i) ret.push_back(cm.drawPile[i]);
+             return ret;
+        })
+        .def_property_readonly("discard_pile", [](const sts::CardManager &cm) {
+             std::vector<sts::CardInstance> ret;
+             for(int i=0; i<cm.discardPile.size(); ++i) ret.push_back(cm.discardPile[i]);
+             return ret;
+        })
+        .def_property_readonly("exhaust_pile", [](const sts::CardManager &cm) {
+             std::vector<sts::CardInstance> ret;
+             for(int i=0; i<cm.exhaustPile.size(); ++i) ret.push_back(cm.exhaustPile[i]);
+             return ret;
+        });
+        
+    pybind11::class_<sts::BattleContext>(m, "BattleContext")
+        .def(pybind11::init<>())
+        .def("init", pybind11::overload_cast<const sts::GameContext &>(&sts::BattleContext::init))
+        .def_readonly("player", &sts::BattleContext::player)
+        .def_readonly("monsters", &sts::BattleContext::monsters)
+        .def_readonly("cards", &sts::BattleContext::cards)
+        .def_readonly("turn", &sts::BattleContext::turn)
+        .def_property_readonly("outcome", [](const sts::BattleContext &bc) { return static_cast<int>(bc.outcome); })
+        .def_readonly("is_battle_over", &sts::BattleContext::isBattleOver)
+        .def("end_turn", &sts::BattleContext::endTurn)
+        .def("execute_actions", &sts::BattleContext::executeActions)
+        .def("get_monster_damage", [](const sts::BattleContext &bc, int idx) {
+             if(idx < 0 || idx >= bc.monsters.monsterCount) return 0;
+             return bc.monsters.arr[idx].getMoveBaseDamage(bc).damage;
+        })
+         .def("get_monster_attack_count", [](const sts::BattleContext &bc, int idx) {
+             if(idx < 0 || idx >= bc.monsters.monsterCount) return 0;
+             return bc.monsters.arr[idx].getMoveBaseDamage(bc).attackCount;
+        });
+        
+    // Helper to play card
+    m.def("play_card", [](sts::BattleContext &bc, int handIdx, int targetIdx) {
+        if (handIdx < 0 || handIdx >= bc.cards.hand.size()) return;
+        auto card = bc.cards.hand[handIdx];
+        sts::CardQueueItem item;
+        item.card = card;
+        item.target = targetIdx;
+        bc.addToBotCard(item);
+    });
+    
+    m.def("potion", [](sts::BattleContext &bc, int action, int slot, int target) {
+        if (action == 0) { // DRINK
+            bc.drinkPotion(slot, target);
+        } else if (action == 1) { // DISCARD
+            bc.discardPotion(slot);
+        }
+    });
+    
+    pybind11::class_<sts::ConsoleSimulator>(m, "ConsoleSimulator")
+        .def(pybind11::init<>())
+        .def("setup_game", &sts::ConsoleSimulator::setupGame)
+        .def("take_action", [](sts::ConsoleSimulator &self, const std::string &action) {
+            sts::SimulatorContext c;
+            c.printPrompts = false; 
+            std::ostringstream oss;
+            self.handleInputLine(action, oss, c);
+        })
+        .def_property_readonly("gc", [](sts::ConsoleSimulator &self) -> sts::GameContext* {
+            return self.gc;
+        }, pybind11::return_value_policy::reference)
+        .def_property_readonly("battle_ctx", [](sts::ConsoleSimulator &self) -> sts::BattleContext* {
+            return self.battleSim.bc;
+        }, pybind11::return_value_policy::reference)
+        .def("get_screen_text", [](sts::ConsoleSimulator &self) {
+            std::ostringstream oss;
+            self.printActions(oss);
+            return oss.str();
+        });
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
