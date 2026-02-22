@@ -36,8 +36,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 # Add paths for imports
-_project_root = Path(__file__).parent.parent.parent
-_integration_dir = Path(__file__).parent.parent
+_project_root = Path(__file__).parent.parent
+_integration_dir = Path(__file__).parent
 sys.path.insert(0, str(_project_root))
 sys.path.insert(0, str(_integration_dir))
 
@@ -294,7 +294,7 @@ Examples:
         print(f"GAME                          SIMULATOR")
         print(f"{'='*40}")
         print(f"Floor:    {gs.get('floor', '?'):>6}              {ss.get('floor', '?')}")
-        print(f"HP:       {gs.get('current_hp', '?')}/{gs.get('max_hp', '?'):<6}        {ss.get('player_hp', '?')}/{ss.get('player_max_hp', '?')}")
+        print(f"HP:       {gs.get('current_hp', '?')}/{gs.get('max_hp', '?'):<6}        {ss.get('cur_hp', '?')}/{ss.get('max_hp', '?')}")
         print(f"Gold:     {gs.get('gold', '?'):>6}              {ss.get('gold', '?')}")
         print(f"Act:      {gs.get('act', '?'):>6}              {ss.get('act', '?')}")
 
