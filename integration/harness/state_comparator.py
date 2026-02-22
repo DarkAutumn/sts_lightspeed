@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
 from enum import Enum
+import re
 
 
 # Monster intent type mapping between CommunicationMod and simulator
@@ -47,6 +48,87 @@ MONSTER_STATUS_EFFECTS = [
     'intangible', 'corpse_explosion', 'lock_on',
     'shackled', 'painful_stabs',
 ]
+
+# Card ID normalization mapping between CommunicationMod and simulator formats
+CARD_ID_NORMALIZE_MAP = {
+    # CommunicationMod format -> normalized format
+    'Strike_R': 'STRIKE',
+    'Defend_R': 'DEFEND',
+    'Bash': 'BASH',
+    # Simulator format -> normalized format
+    'CardId.STRIKE_RED': 'STRIKE',
+    'CardId.DEFEND_RED': 'DEFEND',
+    'CardId.BASH': 'BASH',
+    'Strike': 'STRIKE',
+    'Defend': 'DEFEND',
+}
+
+# Relic ID normalization mapping
+RELIC_ID_NORMALIZE_MAP = {
+    # CommunicationMod format -> normalized format
+    'Burning Blood': 'BURNING_BLOOD',
+    'NeowsBlessing': 'NEOWS_BLESSING',
+    # Simulator format -> normalized format
+    'RelicId.BURNING_BLOOD': 'BURNING_BLOOD',
+    'Burning_Blood': 'BURNING_BLOOD',
+}
+
+
+def normalize_card_id(card_id: str) -> str:
+    """Normalize card ID to a common format for comparison.
+
+    Args:
+        card_id: Card ID from either game or simulator.
+
+    Returns:
+        Normalized card ID.
+    """
+    if card_id is None:
+        return 'UNKNOWN'
+
+    card_id = str(card_id).strip()
+
+    # Check direct mapping
+    if card_id in CARD_ID_NORMALIZE_MAP:
+        return CARD_ID_NORMALIZE_MAP[card_id]
+
+    # Try to extract the core name
+    # Handle formats like "CardId.STRIKE_RED" -> "STRIKE_RED"
+    if '.' in card_id:
+        card_id = card_id.split('.')[-1]
+
+    # Remove common suffixes
+    card_id = card_id.replace('_R', '').replace('_RED', '')
+
+    return card_id.upper()
+
+
+def normalize_relic_id(relic_id: str) -> str:
+    """Normalize relic ID to a common format for comparison.
+
+    Args:
+        relic_id: Relic ID from either game or simulator.
+
+    Returns:
+        Normalized relic ID.
+    """
+    if relic_id is None:
+        return 'UNKNOWN'
+
+    relic_id = str(relic_id).strip()
+
+    # Check direct mapping
+    if relic_id in RELIC_ID_NORMALIZE_MAP:
+        return RELIC_ID_NORMALIZE_MAP[relic_id]
+
+    # Try to extract the core name
+    if '.' in relic_id:
+        relic_id = relic_id.split('.')[-1]
+
+    # Normalize spaces to underscores
+    relic_id = relic_id.replace(' ', '_')
+
+    return relic_id.upper()
 
 
 class DiscrepancySeverity(Enum):
@@ -534,18 +616,20 @@ class StateComparator:
             ))
             return discrepancies  # Don't try to compare individual cards
 
-        # Compare card counts by type (order may differ)
+        # Compare card counts by normalized type (order may differ)
         game_cards = {}
         sim_cards = {}
 
         for card in game_deck:
-            card_id = card.get('id') or card.get('name')
+            raw_id = card.get('id') or card.get('name')
+            card_id = normalize_card_id(raw_id)
             game_cards[card_id] = game_cards.get(card_id, {'count': 0, 'cards': []})
             game_cards[card_id]['count'] += 1
             game_cards[card_id]['cards'].append(card)
 
         for card in sim_deck:
-            card_id = card.get('id') or card.get('name')
+            raw_id = card.get('id') or card.get('name')
+            card_id = normalize_card_id(raw_id)
             sim_cards[card_id] = sim_cards.get(card_id, {'count': 0, 'cards': []})
             sim_cards[card_id]['count'] += 1
             sim_cards[card_id]['cards'].append(card)
@@ -637,8 +721,9 @@ class StateComparator:
                 message=f"Relic count mismatch: game={len(game_relics)}, sim={len(sim_relics)}"
             ))
 
-        game_relic_ids = {r.get('id') for r in game_relics}
-        sim_relic_ids = {r.get('id') for r in sim_relics}
+        # Normalize relic IDs for comparison
+        game_relic_ids = {normalize_relic_id(r.get('id')) for r in game_relics if r.get('id')}
+        sim_relic_ids = {normalize_relic_id(r.get('id')) for r in sim_relics if r.get('id')}
 
         missing_in_sim = game_relic_ids - sim_relic_ids
         extra_in_sim = sim_relic_ids - game_relic_ids
