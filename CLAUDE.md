@@ -30,6 +30,37 @@ python integration/run_tests.py --quick --no-game --seed 12345
 - **State machines**: `GameContext` handles overworld, `BattleContext` handles combat. Both have `inputState`/`screenState` for UI flow.
 - **RNG accuracy**: `java::Random` and `sts::Random` replicate Java exactly. Never modify RNG logic.
 
+## Multi-Project Bridge Coordination
+
+Three STS projects (`sts_lightspeed`, `sts_ai_factory`, `sts_intelligence`) share one CommunicationMod bridge. Use `sts-bridge` to coordinate access:
+
+```bash
+# Check if bridge is locked
+sts-bridge lock-status
+
+# View the request queue
+sts-bridge queue
+
+# Submit a test (waits for completion)
+sts-bridge submit --project my_project -- python integration/run_tests.py --quick --no-game
+
+# Submit async (returns request ID immediately)
+sts-bridge submit --async --project my_project -- python test.py
+
+# Check request status
+sts-bridge status req-abc123
+
+# Wait for request to complete
+sts-bridge wait req-abc123 --timeout 3600
+```
+
+**Key files:**
+- `integration/harness/bridge_lock.py` - POSIX file locking
+- `integration/harness/bridge_coordinator.py` - Queue manager daemon
+- `integration/harness/sts_bridge_cli.py` - CLI wrapper
+
+**State directory:** `/tmp/sts_bridge/.coordinator/`
+
 ## Deeper Docs
 
 - **[docs/TESTING.md](docs/TESTING.md)** - Integration tests, CommunicationMod setup, scenarios
