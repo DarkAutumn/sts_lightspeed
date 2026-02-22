@@ -25,7 +25,7 @@ sys.path.insert(0, str(_project_root))
 sys.path.insert(0, str(_integration_dir))
 
 # Import from local integration harness (has state_comparator, action_translator)
-from harness.game_controller import GameController, CommunicationModError
+from harness.game_controller import GameController, CommunicationModError, BridgeInUseError
 from harness.simulator_controller import SimulatorController
 from harness.state_comparator import StateComparator, ComparisonResult
 from harness.action_translator import ActionTranslator, TranslatedAction, ActionType
@@ -38,16 +38,18 @@ from tests.integration.harness.scenario_loader import ScenarioLoader, Scenario, 
 class TestRunner:
     """Main test runner that synchronizes game and simulator execution."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, project_name: Optional[str] = None):
         """Initialize the test runner.
 
         Args:
             config_path: Path to config.yaml. Defaults to same directory as this file.
+            project_name: Name of the project for bridge lock identification.
         """
         if config_path is None:
             config_path = Path(__file__).parent / "config.yaml"
 
         self.config = self._load_config(config_path)
+        self.project_name = project_name or "sts_lightspeed"
         self.game: Optional[GameController] = None
         self.sim: Optional[SimulatorController] = None
         self.comparator = StateComparator(
@@ -71,18 +73,30 @@ class TestRunner:
     def connect_game(self) -> bool:
         """Connect to the real game via CommunicationMod.
 
+        Acquires an exclusive lock on the bridge before connecting.
+        Lock is released on disconnect_game() or when process exits.
+
         Returns:
             True if connection successful.
         """
         comm_config = self.config.get('communication_mod', {})
         state_dir = comm_config.get('state_dir', '/tmp/sts_bridge')
         timeout = comm_config.get('timeout', 30.0)
+        lock_timeout = comm_config.get('lock_timeout', None)
 
-        self.game = GameController(state_dir=state_dir, timeout=timeout)
+        self.game = GameController(
+            state_dir=state_dir,
+            timeout=timeout,
+            project_name=self.project_name,
+            lock_timeout=lock_timeout
+        )
 
         try:
             self.game.connect()
             return True
+        except BridgeInUseError as e:
+            print(f"Bridge is locked by another project: {e}")
+            return False
         except CommunicationModError as e:
             print(f"Failed to connect to CommunicationMod: {e}")
             return False
@@ -542,6 +556,12 @@ def main():
         default=None,
         help='Generate report from existing results directory'
     )
+    parser.add_argument(
+        '--project',
+        type=str,
+        default='sts_lightspeed',
+        help='Project name for bridge lock identification (default: sts_lightspeed)'
+    )
 
     args = parser.parse_args()
 
@@ -578,7 +598,7 @@ def main():
         return 0 if all(r.passed for r in reporter.results) else 1
 
     # Create test runner
-    runner = TestRunner(config_path=args.config)
+    runner = TestRunner(config_path=args.config, project_name=args.project)
 
     # Connect to game unless --no-game
     if not args.no_game:

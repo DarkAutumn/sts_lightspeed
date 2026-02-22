@@ -6,6 +6,17 @@ This works with the communication_bridge.py script. Setup:
    command=python /path/to/tests/integration/harness/communication_bridge.py --state-dir /tmp/sts_bridge
 
 2. The test runner connects to the bridge via files in the state directory.
+
+Multi-Project Coordination:
+    The controller acquires an exclusive lock on connect() to prevent
+    multiple projects from using the bridge simultaneously. The lock
+    is automatically released on disconnect() or when the process exits.
+
+    from harness.game_controller import GameController
+
+    # Lock is acquired on connect, released on disconnect
+    with GameController(project_name="my_test") as game:
+        state = game.get_state()  # Exclusive access guaranteed
 """
 import json
 import os
@@ -13,10 +24,29 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
+from .bridge_lock import bridge_lock, get_lock_info, LockInfo, BridgeLockedError
+
 
 class CommunicationModError(Exception):
     """Exception raised for CommunicationMod communication errors."""
     pass
+
+
+class BridgeInUseError(CommunicationModError):
+    """Raised when bridge is locked by another process."""
+    def __init__(self, lock_info: Optional[LockInfo]):
+        self.lock_info = lock_info
+        if lock_info:
+            message = (
+                f"Bridge is locked by '{lock_info.project}' (PID {lock_info.pid})\n\n"
+                f"Options:\n"
+                f"  1. Wait for the current process to finish\n"
+                f"  2. Kill the process: kill {lock_info.pid}\n"
+                f"  3. Force remove lock: rm /tmp/sts_bridge/.coordinator/lock"
+            )
+        else:
+            message = "Bridge is locked by another process"
+        super().__init__(message)
 
 
 class GameController:
@@ -30,7 +60,9 @@ class GameController:
         self,
         state_dir: str = "/tmp/sts_bridge",
         config_path: Optional[str] = None,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        project_name: Optional[str] = None,
+        lock_timeout: Optional[float] = None
     ):
         """Initialize the game controller.
 
@@ -38,9 +70,14 @@ class GameController:
             state_dir: Directory for bridge communication files.
             config_path: Ignored (kept for backwards compatibility).
             timeout: Timeout for waiting on game state/commands.
+            project_name: Name of the project for lock identification.
+                         If None, lock is only acquired on connect().
+            lock_timeout: Maximum seconds to wait for lock (None = wait forever).
         """
         self.state_dir = Path(state_dir)
         self.timeout = timeout
+        self.project_name = project_name or "unknown"
+        self.lock_timeout = lock_timeout
 
         # Bridge communication files
         self.state_file = self.state_dir / 'game_state.json'
@@ -49,17 +86,37 @@ class GameController:
 
         self._connected = False
         self._last_state: Optional[Dict[str, Any]] = None
+        self._lock_context = None
+        self._lock_info: Optional[LockInfo] = None
 
     def is_connected(self) -> bool:
         """Check if bridge is ready."""
         return self.ready_file.exists()
 
     def connect(self) -> bool:
-        """Wait for bridge to be ready.
+        """Wait for bridge to be ready and acquire exclusive lock.
+
+        The lock ensures only one project can use the bridge at a time.
+        Lock is automatically released on disconnect() or process exit.
 
         Returns:
-            True if connection successful, False otherwise.
+            True if connection successful.
+
+        Raises:
+            CommunicationModError: If bridge not ready within timeout.
+            BridgeInUseError: If bridge is locked by another process.
+            TimeoutError: If lock cannot be acquired within lock_timeout.
         """
+        # First, acquire the lock to ensure exclusive access
+        try:
+            self._lock_context = bridge_lock(self.project_name, timeout=self.lock_timeout)
+            self._lock_info = self._lock_context.__enter__()
+            print(f"Acquired bridge lock for '{self.project_name}' (PID {self._lock_info.pid})")
+        except TimeoutError as e:
+            # Check who holds the lock
+            info = get_lock_info()
+            raise BridgeInUseError(info) from e
+
         print(f"Waiting for CommunicationMod bridge at {self.state_dir}...")
 
         start_time = time.time()
@@ -69,6 +126,9 @@ class GameController:
                 print("Connected to CommunicationMod bridge")
                 return True
             time.sleep(0.1)
+
+        # Failed to connect - release lock
+        self._release_lock()
 
         raise CommunicationModError(
             f"CommunicationMod bridge not ready after {self.timeout}s.\n"
@@ -82,8 +142,27 @@ class GameController:
         )
 
     def disconnect(self):
-        """Disconnect from CommunicationMod bridge."""
+        """Disconnect from CommunicationMod bridge and release lock."""
         self._connected = False
+        self._release_lock()
+
+    def _release_lock(self):
+        """Release the bridge lock if held."""
+        if self._lock_context:
+            try:
+                self._lock_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._lock_context = None
+            self._lock_info = None
+
+    def get_lock_info(self) -> Optional[LockInfo]:
+        """Get information about the current lock.
+
+        Returns:
+            LockInfo if this controller holds the lock, None otherwise.
+        """
+        return self._lock_info
 
     def _wait_for_state_update(self, timeout: Optional[float] = None) -> bool:
         """Wait for the state file to be updated by the bridge.
