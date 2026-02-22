@@ -1,8 +1,13 @@
 """Test harness components for integration testing."""
 from .game_controller import GameController, CommunicationModError
-from .state_comparator import StateComparator, ComparisonResult, Discrepancy
+from .state_comparator import StateComparator, ComparisonResult, Discrepancy, DiscrepancySeverity
 from .action_translator import ActionTranslator, TranslatedAction, ActionType
 from .reporter import Reporter, TestResult, StepResult
+
+# Diff logger components
+from .diff_logger import DiffLogger, DiffEvent, SessionConfig, SessionStats, create_session_config
+from .combat_journal import CombatJournal, CombatTurn, CardPlay, EnemyAction, CombatLog
+from .discrepancy_reporter import DiscrepancyReporter, DiscrepancyRecord
 
 # SimulatorController requires the slaythespire module to be built
 # Import it conditionally to allow other components to work without it
@@ -47,6 +52,7 @@ __all__ = [
     'StateComparator',
     'ComparisonResult',
     'Discrepancy',
+    'DiscrepancySeverity',
     'ActionTranslator',
     'TranslatedAction',
     'ActionType',
@@ -55,4 +61,17 @@ __all__ = [
     'StepResult',
     'is_simulator_available',
     'get_simulator_controller',
+    # Diff logger exports
+    'DiffLogger',
+    'DiffEvent',
+    'SessionConfig',
+    'SessionStats',
+    'create_session_config',
+    'CombatJournal',
+    'CombatTurn',
+    'CardPlay',
+    'EnemyAction',
+    'CombatLog',
+    'DiscrepancyReporter',
+    'DiscrepancyRecord',
 ]
