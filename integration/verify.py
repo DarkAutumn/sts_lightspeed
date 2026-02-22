@@ -133,21 +133,7 @@ class Verifier:
         Returns:
             True if setup successful, False otherwise.
         """
-        # Initialize simulator
-        try:
-            self.sim = SimulatorController()
-            self.sim.setup_game(
-                seed=self.config.seed,
-                character=self.config.character,
-                ascension=self.config.ascension
-            )
-            print(f"Simulator initialized: seed={self.config.seed}, "
-                  f"character={self.config.character}, ascension={self.config.ascension}")
-        except Exception as e:
-            self.result.errors.append(f"Failed to initialize simulator: {e}")
-            return False
-
-        # Connect to game if not in no-game mode
+        # Connect to game first if not in no-game mode
         if not self.config.no_game:
             try:
                 self.game = GameController(timeout=30.0)
@@ -159,6 +145,40 @@ class Verifier:
                 print("Continuing in simulator-only mode...")
                 self.config.no_game = True
                 self.game = None
+
+        # Initialize simulator
+        try:
+            self.sim = SimulatorController()
+
+            # If connected to game, sync seed and character from game
+            if self.game:
+                try:
+                    sync_info = self.sim.sync_from_game(self.game)
+                    self.config.seed = sync_info['seed']
+                    self.config.character = sync_info['character']
+                    self.config.ascension = sync_info['ascension']
+                    print(f"Synced from game: seed={self.config.seed}, "
+                          f"character={self.config.character}, ascension={self.config.ascension}")
+                except Exception as e:
+                    print(f"Warning: Could not sync from game: {e}")
+                    print("Using specified seed/character instead...")
+                    self.sim.setup_game(
+                        seed=self.config.seed,
+                        character=self.config.character,
+                        ascension=self.config.ascension
+                    )
+            else:
+                self.sim.setup_game(
+                    seed=self.config.seed,
+                    character=self.config.character,
+                    ascension=self.config.ascension
+                )
+
+            print(f"Simulator initialized: seed={self.config.seed}, "
+                  f"character={self.config.character}, ascension={self.config.ascension}")
+        except Exception as e:
+            self.result.errors.append(f"Failed to initialize simulator: {e}")
+            return False
 
         return True
 
@@ -178,6 +198,11 @@ class Verifier:
         print(f"Ascension: {self.config.ascension}")
         print(f"Max steps: {self.config.max_steps}")
         print("=" * 60)
+
+        # Track state for stuck detection
+        last_state_sig = None
+        stuck_count = 0
+        max_stuck_steps = 50  # If state doesn't change for this many steps, report stuck
 
         try:
             step = 0
@@ -208,6 +233,27 @@ class Verifier:
                 # Update tracking
                 self.result.final_act = sim_state.get('act', 1)
                 self.result.final_floor = sim_state.get('floor', 0)
+
+                # Detect stuck state (same state for too many steps)
+                current_sig = (
+                    sim_state.get('floor'),
+                    sim_state.get('cur_hp'),
+                    sim_state.get('gold'),
+                    sim_state.get('screen_state'),
+                )
+                if current_sig == last_state_sig:
+                    stuck_count += 1
+                    if stuck_count >= max_stuck_steps:
+                        self.result.errors.append(
+                            f"Step {step}: State appears stuck (unchanged for {stuck_count} steps). "
+                            f"Floor={current_sig[0]}, HP={current_sig[1]}, Gold={current_sig[2]}, Screen={current_sig[3]}"
+                        )
+                        print(f"\nWarning: State appears stuck for {stuck_count} steps")
+                        print(f"Breaking to avoid infinite loop...")
+                        break
+                else:
+                    stuck_count = 0
+                last_state_sig = current_sig
 
                 # Select and execute next action
                 action = self._select_action(sim_state)
@@ -331,17 +377,30 @@ class Verifier:
                 target_idx = i
                 break
 
-        # Find a playable card
+        # If no targetable monsters, end turn
+        if target_idx < 0:
+            return self.translator.from_sim_to_game("end")
+
+        # Cards that are safe to play without explicit targeting info
+        # (skills that don't target)
+        SKILL_CARDS = {'defend', 'flex', 'armaments', 'shrug_it_off', 'iron_wave'}
+
+        # Attack cards always need targets in the simulator
+        # Use conservative approach: assume ALL cards need targets unless explicitly safe
         for i, card in enumerate(hand):
             cost = card.get('cost_for_turn', card.get('cost', 0))
             if cost <= energy:
-                # Check if card needs a target
-                if card.get('requires_target', False) and target_idx >= 0:
-                    return self.translator.from_sim_to_game(f"{i} {target_idx}")
-                elif not card.get('requires_target', False):
+                card_name = str(card.get('name', '')).lower().replace(' ', '_')
+
+                # Only play cards that are definitely safe (skills like Defend)
+                if card_name in SKILL_CARDS or card_name.startswith('defend'):
                     return self.translator.from_sim_to_game(str(i))
 
-        # Can't play any cards, end turn
+                # For all other cards, provide a target to be safe
+                # This handles Strike, Bash, and any other potentially targeted cards
+                return self.translator.from_sim_to_game(f"{i} {target_idx}")
+
+        # Can't play any cards safely, end turn
         return self.translator.from_sim_to_game("end")
 
     def _select_event_action(self) -> Optional[TranslatedAction]:
@@ -560,7 +619,22 @@ class Verifier:
 
             # Execute on simulator
             if self.sim and action.sim_command:
-                self.sim.take_action(action.sim_command)
+                try:
+                    self.sim.take_action(action.sim_command)
+                except Exception as e:
+                    # Handle simulator crashes (like assertion failures)
+                    error_msg = str(e)
+                    if 'targetIdx' in error_msg or 'assertion' in error_msg.lower():
+                        error = f"Simulator crash on targeted card - check action: {action.sim_command}"
+                    else:
+                        error = f"Simulator error: {error_msg}"
+                    # Don't continue if simulator crashed
+                    return StepResult(
+                        step=step,
+                        action=action_record,
+                        comparison=comparison,
+                        error=error
+                    )
 
             # Get updated states and compare
             if self.game and self.sim:
