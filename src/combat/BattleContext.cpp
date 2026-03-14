@@ -991,7 +991,7 @@ void BattleContext::useAttackCard() {
 
         case CardId::ANGER:
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 8 : 6)) );
-            addToBot( Actions::MakeTempCardInDiscard( CardInstance(CardId::ANGER, up), 1) );
+            addToBot( Actions::MakeTempCardInDiscard(c, 1) );
             break;
 
         case CardId::BASH:
