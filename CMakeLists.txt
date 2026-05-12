@@ -34,3 +34,11 @@ target_link_libraries(small-test PRIVATE nlohmann_json::nlohmann_json)
 target_include_directories(small-test PUBLIC include)
 target_include_directories(small-test PUBLIC json/single_include)
 target_include_directories(small-test PUBLIC bindings)
+
+# Wheel install: scikit-build-core picks up these install() rules and
+# packages the .so into the wheel (alongside the python/sts_lightspeed
+# package). Only the Python extension is installed; the C++ test apps
+# are dev-only.
+if(SKBUILD)
+    install(TARGETS slaythespire LIBRARY DESTINATION .)
+endif()
