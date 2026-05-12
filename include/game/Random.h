@@ -2,6 +2,7 @@
 // Created by gamerpuppy on 6/24/2021.
 //
 
+#include <algorithm>
 #ifndef STS_LIGHTSPEED_RANDOM_H
 #define STS_LIGHTSPEED_RANDOM_H
 

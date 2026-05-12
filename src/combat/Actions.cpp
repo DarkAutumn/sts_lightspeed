@@ -3,6 +3,7 @@
 //
 
 #include "combat/Actions.h"
+#include <algorithm>
 #include "combat/BattleContext.h"
 #include "game/Game.h"
 

@@ -3,6 +3,7 @@
 //
 
 #include "sim/search/BattleScumSearcher2.h"
+#include <algorithm>
 #include "sim/search/ExpertKnowledge.h"
 
 #include <utility>

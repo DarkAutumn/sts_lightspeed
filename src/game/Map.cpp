@@ -8,6 +8,7 @@
 #include "game/Map.h"
 #include "game/Random.h"
 
+#include <algorithm>
 using namespace sts;
 
 constexpr int MAP_HEIGHT = 15;

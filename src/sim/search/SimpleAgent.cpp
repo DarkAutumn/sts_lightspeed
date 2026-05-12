@@ -12,6 +12,7 @@
 #include <thread>
 #include <mutex>
 
+#include <algorithm>
 using namespace sts;
 
 static bool haveInitMaps = false;

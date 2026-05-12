@@ -10,6 +10,7 @@
 
 #include "sim/search/BattleScumSearcher2.h"
 
+#include <algorithm>
 using namespace sts;
 
 void CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
