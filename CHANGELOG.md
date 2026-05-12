@@ -6,6 +6,127 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 6 — Full BattleContext Python bindings (jdc5549 port)
+
+Brings the Python module from a thin wrapper around `Agent.playout`
+(whole-run scripted by C++) to a complete in-process combat-driver API
+suitable for RL gymnasium use. Adapted from the `jdc5549/sts_lightspeed`
+fork, but extended to ben-w-smith's superset of `PlayerStatus` /
+`CardId` enums so it works for all four characters.
+
+#### Added
+- **`sts_lightspeed.InputState` Python enum** mirroring the C++
+  `InputState` enum (EXECUTING_ACTIONS, PLAYER_NORMAL, CARD_SELECT,
+  CHOOSE_STANCE_ACTION, CHOOSE_DISCARD_CARDS, SCRY, INITIAL_SHUFFLE,
+  …) so Python code can dispatch on `bc.input_state` symbolically.
+- **`sts_lightspeed.BattleContext` Python class** with:
+  - `init(gc)` and `init(gc, encounter)` overloads
+  - `execute_actions()`, `resume_actions()`
+  - `play_card(hand_idx, target_idx)`, `end_turn()`, `drink_potion(idx, target)`
+  - `exit_battle()` for forcing combat termination
+  - 14 `choose_*` card-select handlers covering all in-battle card
+    selection screens (`choose_armaments`, `choose_discovery`,
+    `choose_dual_wield`, `choose_exhaust_one`, `choose_exhume`,
+    `choose_forethought`, `choose_headbutt`, `choose_recycle`,
+    `choose_warcry`, `choose_discard_to_hand`, `choose_exhaust_many`,
+    `choose_gamble`, `choose_codex`, `choose_draw_to_hand`)
+  - state accessors: `input_state`, `outcome`, `is_battle_over`,
+    `turn`, `ascension`, `floor_num`, `monster_turn_idx`,
+    `encounter`, `player`, `monsters`, `cards`
+  - **`get_state() -> dict`** returning a structured snapshot: player
+    HP / energy / block / strength / dexterity / focus / artifact /
+    stance / orb slots / relic bits, full status map (~90 keys
+    spanning Ironclad / Silent / Defect / Watcher specific statuses),
+    hand / draw / discard / exhaust piles, monster list with intent
+    and damage, card-select screen state.
+  - **`get_card_select_info()`** wrapping `bc.cardSelectInfo`
+  - `get_monster_damage(idx)` and `get_monster_attack_count(idx)` for
+    intent prediction.
+  - **`clone_with_fresh_rng(seed, reshuffle_draw_pile=False)`**:
+    deep-copies the BattleContext and reseeds the 6 RNG streams
+    (`aiRng`, `cardRandomRng`, `miscRng`, `monsterHpRng`, `potionRng`,
+    `shuffleRng`) from `seed`. Optional `reshuffle_draw_pile=True`
+    re-randomises the draw order so search agents can explore the
+    counterfactual "what if the next draw were different" branch.
+  - RNG counter accessors: `cards_drawn`, `card_random_rng_counter`,
+    `ai_rng_counter`, `misc_rng_counter`, `potion_rng_counter`,
+    `shuffle_rng_counter` for sync-harness parity checks.
+- **GIL release on every step-like binding**
+  (`init`, `execute_actions`, `play_card`, `end_turn`, `drink_potion`,
+  `exit_battle`, all `choose_*`, `clone_with_fresh_rng`). The Python
+  module already declares `mod_gil_not_used()` from Phase 4, so distinct
+  BattleContexts can now be driven concurrently from multiple Python
+  threads on a free-threaded build.
+
+#### Fixed
+- **`ScreenStateInfo::encounter`**: was not default-initialized, so a
+  freshly-constructed `GameContext` had `info.encounter` set to
+  whatever bytes happened to be at that offset. After `Agent.playout`
+  ran, that memory got reused and *new* `GameContext` instances would
+  inherit the leftover encounter value, causing
+  `BattleContext::init(gc)` (which uses `gc.info.encounter` by
+  default) to spawn monsters when called outside a navigated combat.
+  Now defaults to `MonsterEncounter::INVALID`.
+- **`Player::cc` in `BattleContext::init`**: was never assigned from
+  the source `GameContext`. Code paths that read `player.cc`
+  (random card / potion generation, the new `get_state()` "character"
+  field) saw uninitialised memory — they happened to land on
+  `CharacterClass::IRONCLAD` for fresh processes, which masked the
+  bug. Now `player.cc = gc.cc` is set explicitly during `init`.
+
+#### Threading contract
+- `BattleContext` is **single-owner** per Python thread. The module
+  declares `mod_gil_not_used()` and every step-like binding releases
+  the GIL, so distinct BC instances may be driven concurrently — but
+  driving the **same** BC from two threads is undefined behavior (the
+  step methods mutate non-atomic fields). This contract is documented
+  on the class docstring and validated by the per-distinct-BC
+  thread-safety test in `slaythespire-rl/tests/test_battle_context_bindings.py`.
+  Adding an internal mutex was considered and rejected: it would
+  defeat the purpose of the free-threaded build for the RL VectorEnv
+  use case, where each environment owns exactly one BC.
+
+#### Rubber-duck (GPT-5.5) addenda — Phase 6 pass 1
+- **(fix in-scope)** All `choose_*` bindings now set
+  `inputState = EXECUTING_ACTIONS` and call `executeActions()` after
+  mutating selection state, matching `BattleSimulator::takeAction`'s
+  pattern. Previously the binding returned with the BC stuck in
+  CARD_SELECT and any queued follow-up actions (e.g. Discovery's draw,
+  Armaments' card replacement) silently deferred.
+- **(fix in-scope)** Added missing `choose_discard_cards`,
+  `choose_scry_cards`, and `choose_setup_card` bindings. These
+  `CardSelectTask` states are reachable from regular play (Malaise,
+  Scry, Setup); without bindings Python could not progress the
+  battle.
+- **(fix in-scope)** Extended `get_state()["statuses"]` with the
+  Watcher / Defect / misc statuses that jdc5549's original port
+  omitted: `BLASPHEMY`, `DEVA_FORM`, `EXTRA_TURN`, `HEATSINKS`,
+  `MACHINE_LEARNING`, `MENTAL_FORTRESS`, `NIRVANA`, `RUSHDOWN`,
+  `SELF_REPAIR`, `SIMMERING_FURY`, `SPIRIT_SHIELD`, `STORM`,
+  `STUDY`, `RETAIN_CARDS`.
+
+#### Rubber-duck (GPT-5.5) addenda — Phase 6 pass 2
+- **(fix in-scope)** `choose_discard_cards` binding now sorts indices
+  descending before forwarding to `BattleContext::chooseDiscardCards`.
+  The C++ method removes hand indices in caller order without
+  shift-compensating, so a Python caller passing `[0, 1]` would have
+  actually discarded original hand positions 0 and 2 (because removing
+  position 0 shifts later cards down by one). The sibling
+  `chooseExhaustCards` / `chooseGambleCards` already sort descending
+  internally; this binding equalises the contract for the discard
+  path without changing C++ semantics for other internal callers.
+
+#### Rubber-duck (GPT-5.5) addenda — Phase 6 pass 3
+- **(fix in-scope)** `choose_scry_cards` binding now sorts indices
+  ascending before forwarding to `BattleContext::chooseScryCards`.
+  The C++ method iterates the index list in reverse and removes at
+  `drawPile.size() - 1 - drawIdx`. For ascending input that works
+  correctly (largest drawIdx — i.e. deepest card in the visible Scry
+  set — is removed first, so subsequent indices stay valid), but for
+  unsorted input the first removal shifts the draw pile and the second
+  removal hits the wrong card. Sorting ascending in the binding makes
+  the Python API order-insensitive.
+
 ### Phase 5.5 — Crash fixes discovered during slaythespire-rl golden-seed bringup
 
 These changes make `Agent.playout` complete cleanly on every (character,

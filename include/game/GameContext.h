@@ -77,7 +77,7 @@ namespace sts {
     };
 
     struct ScreenStateInfo {
-        MonsterEncounter encounter;
+        MonsterEncounter encounter = MonsterEncounter::INVALID;
 
         // CardSelectScreen
         RngReference transformRng = CARD_RNG;

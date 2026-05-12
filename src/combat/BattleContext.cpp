@@ -54,6 +54,14 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     actionQueue.clear();
     cardQueue.clear();
 
+    // Carry the character class through into the BattleContext's Player.
+    // Without this, Player::cc is uninitialized and any in-combat code that
+    // reads it (random card / potion generation, the Python get_state()
+    // binding's "character" field, etc.) sees garbage. Previously this only
+    // happened to work because zero-initialized memory coincidentally landed
+    // on CharacterClass::IRONCLAD, which masked the bug.
+    player.cc = gc.cc;
+
     potionCount = gc.potionCount;
     potionCapacity = gc.potionCapacity;
     potions = gc.potions;

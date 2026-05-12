@@ -20,6 +20,13 @@
 #include "sim/SimHelpers.h"
 #include "sim/PrintHelpers.h"
 #include "game/Game.h"
+#include "combat/InputState.h"
+#include "combat/CardSelectInfo.h"
+#include "constants/Cards.h"
+#include "constants/MonsterIds.h"
+#include "constants/MonsterMoves.h"
+#include "constants/MonsterEncounters.h"
+#include "constants/CharacterClasses.h"
 #include "constants/Potions.h"
 #include "constants/PlayerStatusEffects.h"
 #include "constants/MonsterStatusEffects.h"
@@ -1196,27 +1203,714 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
              return ret;
         });
         
-    pybind11::class_<sts::BattleContext>(m, "BattleContext")
+    // ------------------------------------------------------------------
+    // InputState — surfaced for Python step loops to dispatch on state
+    // ------------------------------------------------------------------
+    pybind11::enum_<sts::InputState>(m, "InputState")
+        .value("EXECUTING_ACTIONS", sts::InputState::EXECUTING_ACTIONS)
+        .value("PLAYER_NORMAL", sts::InputState::PLAYER_NORMAL)
+        .value("CARD_SELECT", sts::InputState::CARD_SELECT)
+        .value("CHOOSE_STANCE_ACTION", sts::InputState::CHOOSE_STANCE_ACTION)
+        .value("CHOOSE_TOOLBOX_COLORLESS_CARD", sts::InputState::CHOOSE_TOOLBOX_COLORLESS_CARD)
+        .value("CHOOSE_EXHAUST_POTION_CARDS", sts::InputState::CHOOSE_EXHAUST_POTION_CARDS)
+        .value("CHOOSE_GAMBLING_CARDS", sts::InputState::CHOOSE_GAMBLING_CARDS)
+        .value("CHOOSE_ENTROPIC_BREW_DISCARD_POTIONS", sts::InputState::CHOOSE_ENTROPIC_BREW_DISCARD_POTIONS)
+        .value("CHOOSE_DISCARD_CARDS", sts::InputState::CHOOSE_DISCARD_CARDS)
+        .value("SCRY", sts::InputState::SCRY)
+        .value("SELECT_ENEMY_ACTIONS", sts::InputState::SELECT_ENEMY_ACTIONS)
+        .value("FILL_RANDOM_POTIONS", sts::InputState::FILL_RANDOM_POTIONS)
+        .value("SHUFFLE_INTO_DRAW_BURN", sts::InputState::SHUFFLE_INTO_DRAW_BURN)
+        .value("SHUFFLE_INTO_DRAW_VOID", sts::InputState::SHUFFLE_INTO_DRAW_VOID)
+        .value("SHUFFLE_INTO_DRAW_DAZED", sts::InputState::SHUFFLE_INTO_DRAW_DAZED)
+        .value("SHUFFLE_INTO_DRAW_WOUND", sts::InputState::SHUFFLE_INTO_DRAW_WOUND)
+        .value("SHUFFLE_INTO_DRAW_SLIMED", sts::InputState::SHUFFLE_INTO_DRAW_SLIMED)
+        .value("SHUFFLE_INTO_DRAW_ALL_STATUS", sts::InputState::SHUFFLE_INTO_DRAW_ALL_STATUS)
+        .value("SHUFFLE_CUR_CARD_INTO_DRAW", sts::InputState::SHUFFLE_CUR_CARD_INTO_DRAW)
+        .value("SHUFFLE_DISCARD_TO_DRAW", sts::InputState::SHUFFLE_DISCARD_TO_DRAW)
+        .value("INITIAL_SHUFFLE", sts::InputState::INITIAL_SHUFFLE)
+        .value("CREATE_RANDOM_CARD_IN_HAND_POWER", sts::InputState::CREATE_RANDOM_CARD_IN_HAND_POWER)
+        .value("CREATE_RANDOM_CARD_IN_HAND_COLORLESS", sts::InputState::CREATE_RANDOM_CARD_IN_HAND_COLORLESS)
+        .value("CREATE_RANDOM_CARD_IN_HAND_DEAD_BRANCH", sts::InputState::CREATE_RANDOM_CARD_IN_HAND_DEAD_BRANCH)
+        .value("SELECT_CARD_IN_HAND_EXHAUST", sts::InputState::SELECT_CARD_IN_HAND_EXHAUST)
+        .value("GENERATE_NILRY_CARDS", sts::InputState::GENERATE_NILRY_CARDS)
+        .value("EXHAUST_RANDOM_CARD_IN_HAND", sts::InputState::EXHAUST_RANDOM_CARD_IN_HAND)
+        .value("SELECT_STRANGE_SPOON_PROC", sts::InputState::SELECT_STRANGE_SPOON_PROC)
+        .value("SELECT_ENEMY_THE_SPECIMEN_APPLY_POISON", sts::InputState::SELECT_ENEMY_THE_SPECIMEN_APPLY_POISON)
+        .value("SELECT_WARPED_TONGS_CARD", sts::InputState::SELECT_WARPED_TONGS_CARD)
+        .value("CREATE_ENCHIRIDION_POWER", sts::InputState::CREATE_ENCHIRIDION_POWER)
+        .value("SELECT_CONFUSED_CARD_COST", sts::InputState::SELECT_CONFUSED_CARD_COST);
+
+    // ------------------------------------------------------------------
+    // BattleContext — exposed for Python step-by-step control.
+    //
+    // Usage pattern:
+    //   bc = sts.BattleContext()
+    //   bc.init(gc)
+    //   bc.execute_actions()            # advance past initial shuffle / innates
+    //   while not bc.is_over:
+    //       state_dict = bc.get_state() # read state
+    //       if bc.input_state == sts.InputState.PLAYER_NORMAL:
+    //           bc.play_card(hand_idx, target_idx)  # or bc.end_turn()
+    //       elif bc.input_state == sts.InputState.CARD_SELECT:
+    //           bc.choose_armaments_card(hand_idx)
+    //   bc.exit_battle(gc)
+    //
+    // Ported from jdc5549/sts_lightspeed bindings, adapted for ben-w-smith's
+    // expanded status/card set (Watcher MANTRA/WAVE_OF_THE_HAND/etc., Defect
+    // HEATSINKS/MACHINE_LEARNING/SELF_REPAIR/STORM, all 4 character cards).
+    // ------------------------------------------------------------------
+
+    // card_to_dict: convert a CardInstance to a Python dict.
+    // Captured by value into get_state, so safe to share across threads
+    // (each call constructs a fresh dict on the calling thread).
+    auto card_to_dict = [](const sts::CardInstance &c) -> pybind11::dict {
+        pybind11::dict d;
+        d["card_id"]       = std::string(sts::cardStringIds[static_cast<int>(c.id)]);
+        d["upgraded"]      = c.isUpgraded();
+        d["cost"]          = static_cast<int>(c.cost);
+        d["cost_for_turn"] = static_cast<int>(c.costForTurn);
+        d["special_data"]  = static_cast<int>(c.specialData);
+        d["unique_id"]     = static_cast<int>(c.uniqueId);
+        return d;
+    };
+
+    // monster_to_dict: convert a Monster to a Python dict. Needs bc to
+    // compute calculateDamageToPlayer for intent_damage.
+    auto monster_to_dict = [](const sts::Monster &m, const sts::BattleContext &bc) -> pybind11::dict {
+        pybind11::dict d;
+        d["monster_id"]       = std::string(sts::monsterIdStrings[static_cast<int>(m.id)]);
+        d["current_hp"]       = m.curHp;
+        d["max_hp"]           = m.maxHp;
+        d["block"]            = m.block;
+        d["move_id"]          = std::string(sts::monsterMoveStrings[static_cast<int>(m.moveHistory[0])]);
+        d["move_history_0"]   = std::string(sts::monsterMoveStrings[static_cast<int>(m.moveHistory[0])]);
+        d["move_history_1"]   = std::string(sts::monsterMoveStrings[static_cast<int>(m.moveHistory[1])]);
+        {
+            sts::DamageInfo di = m.getMoveBaseDamage(bc);
+            if (di.attackCount > 0 && di.damage > 0) {
+                d["intent_damage"]    = m.calculateDamageToPlayer(bc, di.damage);
+                d["intent_hit_count"] = di.attackCount;
+            } else {
+                d["intent_damage"]    = 0;
+                d["intent_hit_count"] = 0;
+            }
+        }
+        d["strength"]         = m.strength;
+        d["vulnerable"]       = m.vulnerable;
+        d["weak"]             = m.weak;
+        d["artifact"]         = static_cast<int>(m.artifact);
+        d["poison"]           = static_cast<int>(m.poison);
+        d["metallicize"]      = static_cast<int>(m.metallicize);
+        d["plated_armor"]     = static_cast<int>(m.platedArmor);
+        d["regen"]            = static_cast<int>(m.regen);
+        d["block_return"]     = static_cast<int>(m.blockReturn);
+        d["choked"]           = static_cast<int>(m.choked);
+        d["corpse_explosion"] = static_cast<int>(m.corpseExplosion);
+        d["lock_on"]          = static_cast<int>(m.lockOn);
+        d["mark"]             = static_cast<int>(m.mark);
+        d["shackled"]         = static_cast<int>(m.shackled);
+        d["unique_power0"]    = m.uniquePower0;
+        d["unique_power1"]    = static_cast<int>(m.uniquePower1);
+        d["asleep"]           = m.hasStatus<sts::MonsterStatus::ASLEEP>();
+        d["barricade"]        = m.hasStatus<sts::MonsterStatus::BARRICADE>();
+        d["minion"]           = m.hasStatus<sts::MonsterStatus::MINION>();
+        d["minion_leader"]    = m.hasStatus<sts::MonsterStatus::MINION_LEADER>();
+        d["painful_stabs"]    = m.hasStatus<sts::MonsterStatus::PAINFUL_STABS>();
+        d["regrow"]           = m.hasStatus<sts::MonsterStatus::REGROW>();
+        d["shifting"]         = m.hasStatus<sts::MonsterStatus::SHIFTING>();
+        d["stasis"]           = m.hasStatus<sts::MonsterStatus::STASIS>();
+        d["is_alive"]         = m.isAlive();
+        d["half_dead"]        = m.halfDead;
+        d["is_escaping"]      = m.isEscaping();
+        return d;
+    };
+
+    pybind11::class_<sts::BattleContext>(m, "BattleContext",
+        "In-process Slay the Spire combat driver.\n\n"
+        "Threading contract:\n"
+        "  Each BattleContext instance is **single-owner**. The module is\n"
+        "  declared mod_gil_not_used() so distinct instances may be driven\n"
+        "  concurrently from distinct Python threads, but driving the *same*\n"
+        "  instance from two threads at once is undefined behavior - the\n"
+        "  step methods mutate non-atomic fields (queues, RNG counters,\n"
+        "  player, monsters, cards) and intentionally release the GIL for\n"
+        "  parallel-env throughput. Callers (e.g. gymnasium VectorEnv) must\n"
+        "  ensure exclusive access per BC. The thread-safety unit test in\n"
+        "  slaythespire-rl/tests/test_battle_context_bindings.py validates\n"
+        "  the supported pattern: N threads, each owning a distinct BC.")
         .def(pybind11::init<>())
-        .def("init", pybind11::overload_cast<const sts::GameContext &>(&sts::BattleContext::init))
+
+        .def("init",
+            [](sts::BattleContext &bc, const sts::GameContext &gc) { bc.init(gc); },
+            "Initialise BattleContext from a GameContext (sets up monsters, shuffles deck, etc.)",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("init",
+            [](sts::BattleContext &bc, const sts::GameContext &gc, sts::MonsterEncounter enc) { bc.init(gc, enc); },
+            "Initialise BattleContext with an explicit MonsterEncounter (overrides gc.info.encounter)",
+            pybind11::arg("gc"), pybind11::arg("encounter"),
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("execute_actions",
+            [](sts::BattleContext &bc) { bc.executeActions(); },
+            "Run the action queue until a player decision is needed or the battle ends",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("play_card",
+            [](sts::BattleContext &bc, int hand_idx, int target_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                const sts::CardInstance &card = bc.cards.hand[hand_idx];
+                bc.addToBotCard(sts::CardQueueItem(card, target_idx, bc.player.energy));
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            pybind11::arg("hand_idx"),
+            pybind11::arg("target_idx") = 0,
+            "Play the card at hand_idx targeting monster at target_idx (default 0)",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("end_turn",
+            [](sts::BattleContext &bc) {
+                bc.endTurn();
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "End the current player turn (also pumps the action queue)",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("resume_actions",
+            [](sts::BattleContext &bc) {
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Reset inputState to EXECUTING_ACTIONS and pump the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // ----- choose_* card-select handlers -----
+        .def("choose_armaments_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseArmamentsCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to upgrade (Armaments); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_discovery_card",
+            [](sts::BattleContext &bc, int card_id_int) {
+                bc.chooseDiscoveryCard(static_cast<sts::CardId>(card_id_int));
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose one of three Discovery card options by CardId int; pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_dual_wield_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseDualWieldCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to duplicate (Dual Wield); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_exhaust_one_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseExhaustOneCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Exhaust a card in hand (Exhaust One select screen); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_exhume_card",
+            [](sts::BattleContext &bc, int exhaust_idx) {
+                bc.chooseExhumeCard(exhaust_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Exhume a card from the exhaust pile; pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_forethought_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseForethoughtCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to place on bottom of draw pile (Forethought); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_headbutt_card",
+            [](sts::BattleContext &bc, int discard_idx) {
+                bc.chooseHeadbuttCard(discard_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in discard pile to put on top of draw pile (Headbutt); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_recycle_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseRecycleCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to recycle (gain energy equal to cost); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_warcry_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseWarcryCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to put on top of draw pile (Warcry); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_discard_to_hand_card",
+            [](sts::BattleContext &bc, int discard_idx, bool for_zero_cost) {
+                bc.chooseDiscardToHandCard(discard_idx, for_zero_cost);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            pybind11::arg("discard_idx"),
+            pybind11::arg("for_zero_cost") = false,
+            "Put a card from discard pile into hand (Hologram / Liquid Memories / Meditate); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_exhaust_many_cards",
+            [](sts::BattleContext &bc, std::vector<int> idxs) {
+                sts::fixed_list<int, 10> fl;
+                for (int i : idxs) fl.push_back(i);
+                bc.chooseExhaustCards(fl);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Exhaust multiple cards from hand (Exhaust Many select screen); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_gamble_cards",
+            [](sts::BattleContext &bc, std::vector<int> idxs) {
+                sts::fixed_list<int, 10> fl;
+                for (int i : idxs) fl.push_back(i);
+                bc.chooseGambleCards(fl);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Discard the specified hand indices, then draw that many (Gamble); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_codex_card",
+            [](sts::BattleContext &bc, int card_id_int) {
+                bc.chooseCodexCard(static_cast<sts::CardId>(card_id_int));
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            pybind11::arg("card_id_int"),
+            "Choose a card from Nilry's Codex (pass CardId int from get_card_select_info); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_draw_to_hand_card",
+            [](sts::BattleContext &bc, int draw_idx) {
+                bc.chooseDrawToHandCards(&draw_idx, 1);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            pybind11::arg("draw_idx"),
+            "Draw the card at draw_idx in the draw pile to hand (Secret Technique/Weapon/Seek); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_discard_cards",
+            [](sts::BattleContext &bc, std::vector<int> idxs) {
+                // BattleContext::chooseDiscardCards removes indices in the
+                // given order without shift-compensating; if a Python caller
+                // passes [0, 1] the engine would remove old-index 0, then
+                // old-index 2 (because removing 0 shifts later indices down).
+                // The companion chooseExhaustCards / chooseGambleCards
+                // methods sort descending internally to avoid this; the
+                // discard variant does not. Sort here so the Python API has
+                // the consistent "interpret indices as positions in the
+                // original hand" contract.
+                std::sort(idxs.begin(), idxs.end(), std::greater<int>());
+                sts::fixed_list<int, 10> fl;
+                for (int i : idxs) fl.push_back(i);
+                bc.chooseDiscardCards(fl);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Discard the specified hand indices (forced discards from Malaise etc.); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_scry_cards",
+            [](sts::BattleContext &bc, std::vector<int> idxs) {
+                // BattleContext::chooseScryCards iterates idxs from
+                // last-to-first and erases at position
+                // `drawPile.size() - 1 - drawIdx`. That works for an
+                // ascending input (e.g. [0, 1]) because the highest
+                // drawIdx is removed first, but for an unsorted input
+                // like [1, 0] the first removal shifts the pile and the
+                // second removal picks the wrong card. Sort ascending so
+                // C++'s reverse iteration always removes top-relative
+                // indices from largest to smallest.
+                std::sort(idxs.begin(), idxs.end());
+                sts::fixed_list<int, 10> fl;
+                for (int i : idxs) fl.push_back(i);
+                bc.chooseScryCards(fl);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Discard the specified draw-pile indices (Scry); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_setup_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseSetupCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to Setup (place on top of draw with retain); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("drink_potion",
+            [](sts::BattleContext &bc, int slot_idx, int target_idx) {
+                if (slot_idx < 0 || slot_idx >= bc.potionCapacity) return;
+                if (bc.potions[slot_idx] == sts::Potion::EMPTY_POTION_SLOT) return;
+                if (bc.potions[slot_idx] == sts::Potion::FAIRY_POTION) return;
+                bc.drinkPotion(slot_idx, target_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            pybind11::arg("slot_idx"),
+            pybind11::arg("target_idx") = 0,
+            "Use the potion in slot_idx targeting monster at target_idx (default 0); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        .def("exit_battle",
+            [](sts::BattleContext &bc, sts::GameContext &gc) { bc.exitBattle(gc); },
+            "Propagate combat results back to the GameContext after battle ends",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // ----- read-only state -----
+        .def_property_readonly("input_state",
+            [](const sts::BattleContext &bc) { return bc.inputState; },
+            "Current InputState (PLAYER_NORMAL, CARD_SELECT, etc.)")
+        .def_property_readonly("outcome",
+            [](const sts::BattleContext &bc) { return static_cast<int>(bc.outcome); },
+            "Current Outcome as int (0=UNDECIDED, 1=PLAYER_VICTORY, 2=PLAYER_LOSS)")
+        .def_property_readonly("is_over",
+            [](const sts::BattleContext &bc) { return bc.outcome != sts::Outcome::UNDECIDED; },
+            "True if the battle has ended (victory or defeat)")
+        .def_readonly("turn", &sts::BattleContext::turn)
+        .def_readonly("ascension", &sts::BattleContext::ascension)
+        .def_readonly("floor_num", &sts::BattleContext::floorNum)
+        .def_readonly("monster_turn_idx", &sts::BattleContext::monsterTurnIdx)
+        .def_readonly("is_battle_over", &sts::BattleContext::isBattleOver)
+        .def_property_readonly("encounter",
+            [](const sts::BattleContext &bc) { return bc.encounter; },
+            "MonsterEncounter for this fight")
         .def_readonly("player", &sts::BattleContext::player)
         .def_readonly("monsters", &sts::BattleContext::monsters)
         .def_readonly("cards", &sts::BattleContext::cards)
-        .def_readonly("turn", &sts::BattleContext::turn)
-        .def_property_readonly("outcome", [](const sts::BattleContext &bc) { return static_cast<int>(bc.outcome); })
-        .def_readonly("is_battle_over", &sts::BattleContext::isBattleOver)
-        .def("end_turn", &sts::BattleContext::endTurn)
-        .def("execute_actions", &sts::BattleContext::executeActions)
+
         .def("get_monster_damage", [](const sts::BattleContext &bc, int idx) {
              if(idx < 0 || idx >= bc.monsters.monsterCount) return 0;
              return bc.monsters.arr[idx].getMoveBaseDamage(bc).damage;
         })
-         .def("get_monster_attack_count", [](const sts::BattleContext &bc, int idx) {
+        .def("get_monster_attack_count", [](const sts::BattleContext &bc, int idx) {
              if(idx < 0 || idx >= bc.monsters.monsterCount) return 0;
              return bc.monsters.arr[idx].getMoveBaseDamage(bc).attackCount;
-        });
-        
-    // Helper to play card
+        })
+
+        .def("get_card_select_info",
+            [](const sts::BattleContext &bc) -> pybind11::dict {
+                pybind11::dict d;
+                const auto &csi = bc.cardSelectInfo;
+                d["task"]          = static_cast<int>(csi.cardSelectTask);
+                d["pick_count"]    = csi.pickCount;
+                d["can_pick_zero"] = csi.canPickZero;
+                d["can_pick_any"]  = csi.canPickAnyNumber;
+                pybind11::list cards;
+                for (int i = 0; i < 3; ++i) {
+                    cards.append(static_cast<int>(csi.cards[i]));
+                }
+                d["cards"] = cards;
+                return d;
+            },
+            "Return card-select screen info (task, pick_count, can_pick_zero, cards)")
+
+        // ----- bulk state extraction -----
+        // Captures the helpers by value; pybind11 dict construction itself
+        // requires the GIL, so this method holds it (no call_guard).
+        .def("get_state",
+            [card_to_dict, monster_to_dict](const sts::BattleContext &bc) -> pybind11::dict {
+                using PS = PlayerStatus;
+                pybind11::dict d;
+                const sts::Player &p = bc.player;
+
+                d["current_hp"]         = p.curHp;
+                d["max_hp"]             = p.maxHp;
+                d["block"]              = p.block;
+                d["energy"]             = p.energy;
+                d["energy_per_turn"]    = static_cast<int>(p.energyPerTurn);
+                d["card_draw_per_turn"] = static_cast<int>(p.cardDrawPerTurn);
+                d["gold"]               = static_cast<int>(p.gold);
+                d["character"]          = std::string(sts::characterClassEnumNames[static_cast<int>(p.cc)]);
+                d["ascension"]          = bc.ascension;
+                d["floor_num"]          = bc.floorNum;
+                d["turn"]               = bc.turn;
+                d["strength"]           = p.strength;
+                d["dexterity"]          = p.dexterity;
+                d["focus"]              = p.focus;
+                d["artifact"]           = p.artifact;
+                d["stance"]             = std::string(stanceStrings[static_cast<int>(p.stance)]);
+                d["orb_slots"]          = static_cast<int>(p.orbSlots);
+
+                // Per-relic counters
+                d["happy_flower_counter"]   = static_cast<int>(p.happyFlowerCounter);
+                d["incense_burner_counter"] = static_cast<int>(p.incenseBurnerCounter);
+                d["ink_bottle_counter"]     = static_cast<int>(p.inkBottleCounter);
+                d["inserter_counter"]       = static_cast<int>(p.inserterCounter);
+                d["nunchaku_counter"]       = static_cast<int>(p.nunchakuCounter);
+                d["pen_nib_counter"]        = static_cast<int>(p.penNibCounter);
+                d["sundial_counter"]        = static_cast<int>(p.sundialCounter);
+
+                // Internal counters
+                d["bomb1"]                            = static_cast<int>(p.bomb1);
+                d["bomb2"]                            = static_cast<int>(p.bomb2);
+                d["bomb3"]                            = static_cast<int>(p.bomb3);
+                d["combust_hp_loss"]                  = static_cast<int>(p.combustHpLoss);
+                d["deva_form_energy_per_turn"]        = static_cast<int>(p.devaFormEnergyPerTurn);
+                d["echo_form_cards_doubled"]          = static_cast<int>(p.echoFormCardsDoubled);
+                d["panache_counter"]                  = static_cast<int>(p.panacheCounter);
+                d["have_used_necronomicon_this_turn"] = p.haveUsedNecronomiconThisTurn;
+
+                // Turn tracking
+                d["cards_played_this_turn"]    = static_cast<int>(p.cardsPlayedThisTurn);
+                d["attacks_played_this_turn"]  = static_cast<int>(p.attacksPlayedThisTurn);
+                d["skills_played_this_turn"]   = static_cast<int>(p.skillsPlayedThisTurn);
+                d["cards_discarded_this_turn"] = static_cast<int>(p.cardsDiscardedThisTurn);
+                d["orange_pellets_attack"]     = (bool)p.orangePelletsCardTypesPlayed[0];
+                d["orange_pellets_skill"]      = (bool)p.orangePelletsCardTypesPlayed[1];
+                d["orange_pellets_power"]      = (bool)p.orangePelletsCardTypesPlayed[2];
+
+                // Statuses (cross-character superset; absent statuses report 0/false)
+                pybind11::dict statuses;
+                statuses["DOUBLE_DAMAGE"]       = (bool)p.hasStatus<PS::DOUBLE_DAMAGE>();
+                statuses["DRAW_REDUCTION"]      = (bool)p.hasStatus<PS::DRAW_REDUCTION>();
+                statuses["FRAIL"]               = p.getStatus<PS::FRAIL>();
+                statuses["INTANGIBLE"]          = p.getStatus<PS::INTANGIBLE>();
+                statuses["VULNERABLE"]          = p.getStatus<PS::VULNERABLE>();
+                statuses["WEAK"]                = p.getStatus<PS::WEAK>();
+                statuses["BIAS"]                = p.getStatus<PS::BIAS>();
+                statuses["CONFUSED"]            = (bool)p.hasStatus<PS::CONFUSED>();
+                statuses["CONSTRICTED"]         = p.getStatus<PS::CONSTRICTED>();
+                statuses["ENTANGLED"]           = (bool)p.hasStatus<PS::ENTANGLED>();
+                statuses["FASTING"]             = p.getStatus<PS::FASTING>();
+                statuses["HEX"]                 = (bool)p.hasStatus<PS::HEX>();
+                statuses["LOSE_DEXTERITY"]      = p.getStatus<PS::LOSE_DEXTERITY>();
+                statuses["LOSE_STRENGTH"]       = p.getStatus<PS::LOSE_STRENGTH>();
+                statuses["NO_BLOCK"]            = (bool)p.hasStatus<PS::NO_BLOCK>();
+                statuses["NO_DRAW"]             = (bool)p.hasStatus<PS::NO_DRAW>();
+                statuses["WRAITH_FORM"]         = p.getStatus<PS::WRAITH_FORM>();
+                statuses["BARRICADE"]           = (bool)p.hasStatus<PS::BARRICADE>();
+                statuses["BLASPHEMER"]          = (bool)p.hasStatus<PS::BLASPHEMER>();
+                statuses["CORRUPTION"]          = (bool)p.hasStatus<PS::CORRUPTION>();
+                statuses["ELECTRO"]             = (bool)p.hasStatus<PS::ELECTRO>();
+                statuses["SURROUNDED"]          = (bool)p.hasStatus<PS::SURROUNDED>();
+                statuses["MASTER_REALITY"]      = (bool)p.hasStatus<PS::MASTER_REALITY>();
+                statuses["PEN_NIB"]             = (bool)p.hasStatus<PS::PEN_NIB>();
+                statuses["WRATH_NEXT_TURN"]     = (bool)p.hasStatus<PS::WRATH_NEXT_TURN>();
+                statuses["AMPLIFY"]             = p.getStatus<PS::AMPLIFY>();
+                statuses["BLUR"]                = p.getStatus<PS::BLUR>();
+                statuses["BUFFER"]              = p.getStatus<PS::BUFFER>();
+                statuses["COLLECT"]             = p.getStatus<PS::COLLECT>();
+                statuses["DOUBLE_TAP"]          = p.getStatus<PS::DOUBLE_TAP>();
+                statuses["DUPLICATION"]         = p.getStatus<PS::DUPLICATION>();
+                statuses["ECHO_FORM"]           = p.getStatus<PS::ECHO_FORM>();
+                statuses["FREE_ATTACK_POWER"]   = p.getStatus<PS::FREE_ATTACK_POWER>();
+                statuses["REBOUND"]             = p.getStatus<PS::REBOUND>();
+                statuses["MANTRA"]              = p.getStatus<PS::MANTRA>();
+                statuses["ACCURACY"]            = p.getStatus<PS::ACCURACY>();
+                statuses["AFTER_IMAGE"]         = p.getStatus<PS::AFTER_IMAGE>();
+                statuses["BATTLE_HYMN"]         = p.getStatus<PS::BATTLE_HYMN>();
+                statuses["BRUTALITY"]           = p.getStatus<PS::BRUTALITY>();
+                statuses["BURST"]               = p.getStatus<PS::BURST>();
+                statuses["COMBUST"]             = p.getStatus<PS::COMBUST>();
+                statuses["CREATIVE_AI"]         = p.getStatus<PS::CREATIVE_AI>();
+                statuses["DARK_EMBRACE"]        = p.getStatus<PS::DARK_EMBRACE>();
+                statuses["DEMON_FORM"]          = p.getStatus<PS::DEMON_FORM>();
+                statuses["DEVA"]                = p.getStatus<PS::DEVA>();
+                statuses["DEVOTION"]            = p.getStatus<PS::DEVOTION>();
+                statuses["DRAW_CARD_NEXT_TURN"] = p.getStatus<PS::DRAW_CARD_NEXT_TURN>();
+                statuses["ENERGIZED"]           = p.getStatus<PS::ENERGIZED>();
+                statuses["ENVENOM"]             = p.getStatus<PS::ENVENOM>();
+                statuses["ESTABLISHMENT"]       = p.getStatus<PS::ESTABLISHMENT>();
+                statuses["EVOLVE"]              = p.getStatus<PS::EVOLVE>();
+                statuses["FEEL_NO_PAIN"]        = p.getStatus<PS::FEEL_NO_PAIN>();
+                statuses["FIRE_BREATHING"]      = p.getStatus<PS::FIRE_BREATHING>();
+                statuses["FLAME_BARRIER"]       = p.getStatus<PS::FLAME_BARRIER>();
+                statuses["FOCUS"]               = p.focus;
+                statuses["FORESIGHT"]           = p.getStatus<PS::FORESIGHT>();
+                statuses["HELLO_WORLD"]         = p.getStatus<PS::HELLO_WORLD>();
+                statuses["INFINITE_BLADES"]     = p.getStatus<PS::INFINITE_BLADES>();
+                statuses["JUGGERNAUT"]          = p.getStatus<PS::JUGGERNAUT>();
+                statuses["LIKE_WATER"]          = p.getStatus<PS::LIKE_WATER>();
+                statuses["LOOP"]                = p.getStatus<PS::LOOP>();
+                statuses["MAGNETISM"]           = p.getStatus<PS::MAGNETISM>();
+                statuses["MAYHEM"]              = p.getStatus<PS::MAYHEM>();
+                statuses["METALLICIZE"]         = p.getStatus<PS::METALLICIZE>();
+                statuses["NEXT_TURN_BLOCK"]     = p.getStatus<PS::NEXT_TURN_BLOCK>();
+                statuses["NOXIOUS_FUMES"]       = p.getStatus<PS::NOXIOUS_FUMES>();
+                statuses["OMEGA"]               = p.getStatus<PS::OMEGA>();
+                statuses["PANACHE"]             = p.getStatus<PS::PANACHE>();
+                statuses["PHANTASMAL"]          = p.getStatus<PS::PHANTASMAL>();
+                statuses["PLATED_ARMOR"]        = p.getStatus<PS::PLATED_ARMOR>();
+                statuses["RAGE"]                = p.getStatus<PS::RAGE>();
+                statuses["REGEN"]               = p.getStatus<PS::REGEN>();
+                statuses["RITUAL"]              = p.getStatus<PS::RITUAL>();
+                statuses["RUPTURE"]             = p.getStatus<PS::RUPTURE>();
+                statuses["SADISTIC"]            = p.getStatus<PS::SADISTIC>();
+                statuses["STATIC_DISCHARGE"]    = p.getStatus<PS::STATIC_DISCHARGE>();
+                statuses["THORNS"]              = p.getStatus<PS::THORNS>();
+                statuses["THOUSAND_CUTS"]       = p.getStatus<PS::THOUSAND_CUTS>();
+                statuses["TOOLS_OF_THE_TRADE"]  = p.getStatus<PS::TOOLS_OF_THE_TRADE>();
+                statuses["VIGOR"]               = p.getStatus<PS::VIGOR>();
+                statuses["WAVE_OF_THE_HAND"]    = p.getStatus<PS::WAVE_OF_THE_HAND>();
+                statuses["EQUILIBRIUM"]         = p.getStatus<PS::EQUILIBRIUM>();
+                statuses["ARTIFACT"]            = p.artifact;
+                statuses["DEXTERITY"]           = p.dexterity;
+                statuses["STRENGTH"]            = p.strength;
+                statuses["THE_BOMB"]            = static_cast<int>(p.bomb3);
+                // Watcher / Defect / misc statuses that exist on ben-w-smith's
+                // extended PlayerStatus enum but were absent from jdc5549's
+                // original port.
+                statuses["BLASPHEMY"]           = p.getStatus<PS::BLASPHEMY>();
+                statuses["DEVA_FORM"]           = p.getStatus<PS::DEVA_FORM>();
+                statuses["EXTRA_TURN"]          = p.getStatus<PS::EXTRA_TURN>();
+                statuses["HEATSINKS"]           = p.getStatus<PS::HEATSINKS>();
+                statuses["MACHINE_LEARNING"]    = p.getStatus<PS::MACHINE_LEARNING>();
+                statuses["MENTAL_FORTRESS"]     = p.getStatus<PS::MENTAL_FORTRESS>();
+                statuses["NIRVANA"]             = p.getStatus<PS::NIRVANA>();
+                statuses["RUSHDOWN"]            = p.getStatus<PS::RUSHDOWN>();
+                statuses["SELF_REPAIR"]         = p.getStatus<PS::SELF_REPAIR>();
+                statuses["SIMMERING_FURY"]      = p.getStatus<PS::SIMMERING_FURY>();
+                statuses["SPIRIT_SHIELD"]       = p.getStatus<PS::SPIRIT_SHIELD>();
+                statuses["STORM"]               = p.getStatus<PS::STORM>();
+                statuses["STUDY"]               = p.getStatus<PS::STUDY>();
+                statuses["RETAIN_CARDS"]        = (bool)p.hasStatus<PS::RETAIN_CARDS>();
+                d["statuses"] = statuses;
+
+                // Relic bits (3 segments — supports >128 relic ids thanks to
+                // langsfang's relicBits widening picked up in Phase 3).
+                d["relic_bits0"] = static_cast<unsigned long long>(p.relicBits0);
+                d["relic_bits1"] = static_cast<unsigned long long>(p.relicBits1);
+                d["relic_bits2"] = static_cast<unsigned long long>(p.relicBits2);
+
+                // Potions
+                d["potion_count"]    = bc.potionCount;
+                d["potion_capacity"] = bc.potionCapacity;
+                pybind11::list potions;
+                for (int i = 0; i < bc.potionCapacity && i < 5; ++i) {
+                    potions.append(std::string(sts::potionEnumNames[static_cast<int>(bc.potions[i])]));
+                }
+                d["potions"] = potions;
+
+                // Card piles
+                pybind11::list hand;
+                for (int i = 0; i < bc.cards.cardsInHand; ++i) hand.append(card_to_dict(bc.cards.hand[i]));
+                d["hand"] = hand;
+
+                pybind11::list draw;
+                for (const auto &c : bc.cards.drawPile) draw.append(card_to_dict(c));
+                d["draw_pile"] = draw;
+
+                pybind11::list discard;
+                for (const auto &c : bc.cards.discardPile) discard.append(card_to_dict(c));
+                d["discard_pile"] = discard;
+
+                pybind11::list exhaust;
+                for (const auto &c : bc.cards.exhaustPile) exhaust.append(card_to_dict(c));
+                d["exhaust_pile"] = exhaust;
+
+                // Monsters
+                d["monster_count"] = bc.monsters.monsterCount;
+                pybind11::list monsters;
+                for (int i = 0; i < bc.monsters.monsterCount && i < 5; ++i) {
+                    monsters.append(monster_to_dict(bc.monsters.arr[i], bc));
+                }
+                d["monsters"] = monsters;
+
+                d["stolen_gold_check"]     = bc.requiresStolenGoldCheck();
+                d["last_targeted_monster"] = static_cast<int>(bc.player.lastTargetedMonster);
+                {
+                    const auto &sc = bc.cards.stasisCards;
+                    d["stasis_card_0"] = (sc[0].id != sts::CardId::INVALID)
+                        ? std::string(sts::cardStringIds[static_cast<int>(sc[0].id)])
+                        : std::string("NONE");
+                    d["stasis_card_1"] = (sc[1].id != sts::CardId::INVALID)
+                        ? std::string(sts::cardStringIds[static_cast<int>(sc[1].id)])
+                        : std::string("NONE");
+                }
+
+                d["encounter"]   = std::string(sts::monsterEncounterEnumNames[static_cast<int>(bc.encounter)]);
+                d["input_state"] = static_cast<int>(bc.inputState);
+                d["is_over"]     = (bc.outcome != sts::Outcome::UNDECIDED);
+                d["outcome"]     = static_cast<int>(bc.outcome);
+
+                {
+                    const auto &csi = bc.cardSelectInfo;
+                    pybind11::dict csd;
+                    csd["task"]          = std::string(sts::cardSelectTaskStrings[static_cast<int>(csi.cardSelectTask)]);
+                    csd["pick_count"]    = csi.pickCount;
+                    csd["can_pick_zero"] = csi.canPickZero;
+                    csd["can_pick_any"]  = csi.canPickAnyNumber;
+                    pybind11::list cscards;
+                    for (int i = 0; i < 3; ++i) {
+                        cscards.append(std::string(sts::cardStringIds[static_cast<int>(csi.cards[i])]));
+                    }
+                    csd["cards"] = cscards;
+                    d["card_select_info"] = csd;
+                }
+
+                return d;
+            },
+            "Extract the complete battle state as a Python dict (read-only snapshot)")
+
+        // ----- clone with fresh RNG (for tree-search rollouts) -----
+        // Deep-copies bc, reseeds the 6 RNG streams from derived seeds.
+        // Each branch of a rollout tree should call this with a distinct
+        // seed; the clones are independent and safe to drive in parallel
+        // from separate threads.
+        .def("clone_with_fresh_rng",
+            [](const sts::BattleContext &bc, std::uint64_t seed, bool reshuffle_draw_pile) -> sts::BattleContext {
+                sts::BattleContext copy = bc;
+                copy.aiRng         = sts::Random(seed + 0);
+                copy.cardRandomRng = sts::Random(seed + 1);
+                copy.miscRng       = sts::Random(seed + 2);
+                copy.monsterHpRng  = sts::Random(seed + 3);
+                copy.potionRng     = sts::Random(seed + 4);
+                copy.shuffleRng    = sts::Random(seed + 5);
+                if (reshuffle_draw_pile) {
+                    auto &dp = copy.cards.drawPile;
+                    java::Collections::shuffle(dp.begin(), dp.end(),
+                        java::Random(copy.shuffleRng.randomLong()));
+                }
+                return copy;
+            },
+            pybind11::arg("seed"),
+            pybind11::arg("reshuffle_draw_pile") = false,
+            "Deep-copy bc, reseed all 6 RNG streams from derived seeds, optionally reshuffle draw pile",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // ----- RNG counter accessors (for stochasticity detection / parity) -----
+        .def_property_readonly("cards_drawn",
+            [](const sts::BattleContext &bc) { return bc.cardsDrawn; },
+            "Number of cards drawn so far in the battle")
+        .def_property_readonly("card_random_rng_counter",
+            [](const sts::BattleContext &bc) { return bc.cardRandomRng.counter; })
+        .def_property_readonly("ai_rng_counter",
+            [](const sts::BattleContext &bc) { return bc.aiRng.counter; })
+        .def_property_readonly("misc_rng_counter",
+            [](const sts::BattleContext &bc) { return bc.miscRng.counter; })
+        .def_property_readonly("potion_rng_counter",
+            [](const sts::BattleContext &bc) { return bc.potionRng.counter; })
+        .def_property_readonly("shuffle_rng_counter",
+            [](const sts::BattleContext &bc) { return bc.shuffleRng.counter; });
+
+    // Legacy free-function helpers (kept for backward compat with older
+    // Python harnesses; new code should call the BattleContext methods).
     m.def("play_card", [](sts::BattleContext &bc, int handIdx, int targetIdx) {
         if (handIdx < 0 || handIdx >= bc.cards.hand.size()) return;
         auto card = bc.cards.hand[handIdx];
@@ -1227,9 +1921,9 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
 
     m.def("potion", [](sts::BattleContext &bc, int action, int slot, int target) {
-        if (action == 0) { // DRINK
+        if (action == 0) {
             bc.drinkPotion(slot, target);
-        } else if (action == 1) { // DISCARD
+        } else if (action == 1) {
             bc.discardPotion(slot);
         }
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
