@@ -13,10 +13,13 @@ using namespace sts;
 
 
 bool Player::hasRelicRuntime(RelicId r) const {
-    if ((int) r < 64) {
-        return relicBits0 & (1ULL << (int)r);
+    const int idx = static_cast<int>(r);
+    if (idx < 64) {
+        return relicBits0 & (1ULL << idx);
+    } else if (idx < 128) {
+        return relicBits1 & (1ULL << (idx-64));
     } else {
-        return relicBits1 & (1ULL << ((int)r-64));
+        return relicBits2 & (1ULL << (idx-128));
     }
 }
 

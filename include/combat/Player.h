@@ -67,6 +67,7 @@ namespace sts {
 
         std::uint64_t relicBits0 = 0;
         std::uint64_t relicBits1 = 0;
+        std::uint64_t relicBits2 = 0;
 
         // special info
         int8_t  happyFlowerCounter = 0;
@@ -457,14 +458,18 @@ namespace sts {
         if (value) {
             if constexpr ((int) r < 64) {
                 relicBits0 |= 1ULL << (int)r;
-            } else {
+            } else if constexpr ((int) r < 128) {
                 relicBits1 |= 1ULL << ((int)r-64);
+            } else {
+                relicBits2 |= 1ULL << ((int)r-128);
             }
         } else {
             if constexpr ((int) r < 64) {
                 relicBits0 &= ~(1ULL << (int)r);
-            } else {
+            } else if constexpr ((int) r < 128) {
                 relicBits1 &= ~(1ULL << ((int)r-64));
+            } else {
+                relicBits2 &= ~(1ULL << ((int)r-128));
             }
         }
     }
@@ -473,8 +478,10 @@ namespace sts {
     bool Player::hasRelic() const {
         if constexpr ((int) r < 64) {
             return relicBits0 & (1ULL << (int)r);
-        } else {
+        } else if constexpr ((int) r < 128) {
             return relicBits1 & (1ULL << ((int)r-64));
+        } else {
+            return relicBits2 & (1ULL << ((int)r-128));
         }
     }
 
