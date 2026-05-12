@@ -130,28 +130,24 @@ def test_agent_config_property_rejected_during_playout() -> None:
     shared_agent.print_logs = False
 
     seen_runtime_error = threading.Event()
-    playout_started = threading.Event()
     stop_playout = threading.Event()
 
     def playout_worker() -> None:
+        # simulation_count_base=300 keeps the playout long enough
+        # (~50-100 ms) that the writer thread has many overlap windows.
         gc = sts.GameContext(sts.CharacterClass.IRONCLAD, 5001, 0)
-        # The first property write is allowed (no playout in flight),
-        # and serves as a synchronization point with the writer thread.
-        playout_started.set()
         try:
             shared_agent.playout(gc)
         finally:
             stop_playout.set()
 
     def writer_worker() -> None:
-        playout_started.wait(timeout=5.0)
-        # Try repeatedly to write a config field. We want to catch the
-        # case where playout is mid-flight. Even fast playouts (~20 ms)
-        # have a huge race window relative to a single atomic store, so
-        # at least one of these attempts will be guard-rejected.
-        for _ in range(200):
-            if stop_playout.is_set():
-                break
+        # Keep trying until either the guard rejects us OR the playout
+        # finishes. We do NOT use a fixed iteration count — on a fast
+        # machine that could complete before the playout's busy guard
+        # is acquired, producing a spurious failure. On a slow machine
+        # the playout could outlast 200 iterations.
+        while not stop_playout.is_set():
             try:
                 shared_agent.simulation_count_base = 999
             except RuntimeError as exc:
@@ -172,7 +168,8 @@ def test_agent_config_property_rejected_during_playout() -> None:
     assert seen_runtime_error.is_set(), (
         "Writing a config property while playout was running must "
         "raise RuntimeError. None was observed — either the property "
-        "isn't guarded or the writer thread missed the overlap window."
+        "isn't guarded or the writer thread never overlapped with the "
+        "guarded region (sign of a test-design bug, not a code bug)."
     )
 
 

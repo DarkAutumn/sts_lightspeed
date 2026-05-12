@@ -93,16 +93,20 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());
-    // Config properties. We expose them as def_property (rather than
-    // def_readwrite) so the setter can reject writes while the same
-    // Agent is in a playout call. Without this guard, a second thread
-    // could mutate `simulation_count_base` etc. while playout reads
-    // them under the released GIL — a C++ data race.
+    // Config properties. Setters take AgentBusyGuard so a write while
+    // playout is in flight throws RuntimeError. Getters are unguarded
+    // raw reads.
     //
-    // Reads (getters) are not guarded: the playout-internal access is
-    // also a raw read of these fields, so there's no observable
-    // difference from a concurrent Python read. The hazard is only the
-    // write-while-running case, which is what we reject.
+    // Note on the remaining getter-vs-setter window: when NO playout is
+    // running, a thread reading `agent.print_logs` concurrently with
+    // another thread writing it is a non-atomic load+store on the same
+    // address. This is technically UB under the C++ memory model, but
+    // for the field types we expose (int, bool, double, all aligned),
+    // every supported platform (x86-64, arm64) makes aligned reads
+    // and writes atomic at the hardware level — at worst we observe
+    // either the pre-write or post-write value, never a torn read.
+    // The well-defined hazard (write-while-playout-reads-internally)
+    // is what the busy guard prevents.
 #define STS_AGENT_PROPERTY(NAME, FIELD, DOC) \
     .def_property(NAME, \
         [](const search::ScumSearchAgent2 &self) { return self.FIELD; }, \
