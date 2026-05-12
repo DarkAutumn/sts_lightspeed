@@ -116,6 +116,66 @@ def test_shared_agent_rejected_at_runtime() -> None:
     )
 
 
+def test_agent_config_property_rejected_during_playout() -> None:
+    """Phase 4 review-fix^3 guarantee: mutating Agent config properties
+    (simulation_count_base, print_logs, etc.) from another thread while
+    that Agent is in a playout call must also throw RuntimeError, not
+    silently corrupt a running simulation by changing knobs midway.
+
+    This is the property-write equivalent of the playout re-entrance
+    test above.
+    """
+    shared_agent = sts.Agent()
+    shared_agent.simulation_count_base = 300
+    shared_agent.print_logs = False
+
+    seen_runtime_error = threading.Event()
+    playout_started = threading.Event()
+    stop_playout = threading.Event()
+
+    def playout_worker() -> None:
+        gc = sts.GameContext(sts.CharacterClass.IRONCLAD, 5001, 0)
+        # The first property write is allowed (no playout in flight),
+        # and serves as a synchronization point with the writer thread.
+        playout_started.set()
+        try:
+            shared_agent.playout(gc)
+        finally:
+            stop_playout.set()
+
+    def writer_worker() -> None:
+        playout_started.wait(timeout=5.0)
+        # Try repeatedly to write a config field. We want to catch the
+        # case where playout is mid-flight. Even fast playouts (~20 ms)
+        # have a huge race window relative to a single atomic store, so
+        # at least one of these attempts will be guard-rejected.
+        for _ in range(200):
+            if stop_playout.is_set():
+                break
+            try:
+                shared_agent.simulation_count_base = 999
+            except RuntimeError as exc:
+                if "not reentrant" in str(exc):
+                    seen_runtime_error.set()
+                    return
+
+    threads = [
+        threading.Thread(target=playout_worker),
+        threading.Thread(target=writer_worker),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30.0)
+        assert not t.is_alive(), "worker hung — config guard deadlocked"
+
+    assert seen_runtime_error.is_set(), (
+        "Writing a config property while playout was running must "
+        "raise RuntimeError. None was observed — either the property "
+        "isn't guarded or the writer thread missed the overlap window."
+    )
+
+
 @pytest.mark.freethreading
 def test_throughput_scales_under_freethreading() -> None:
     """Phase 4.5 micro-benchmark.

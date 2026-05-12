@@ -93,10 +93,34 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());
-    agent.def_readwrite("simulation_count_base", &search::ScumSearchAgent2::simulationCountBase, "number of simulations the agent uses for monte carlo tree search each turn")
-        .def_readwrite("boss_simulation_multiplier", &search::ScumSearchAgent2::bossSimulationMultiplier, "bonus multiplier to the simulation count for boss fights")
-        .def_readwrite("pause_on_card_reward", &search::ScumSearchAgent2::pauseOnCardReward, "causes the agent to pause so as to cede control to the user when it encounters a card reward choice")
-        .def_readwrite("print_logs", &search::ScumSearchAgent2::printLogs, "when set to true, the agent prints state information as it makes actions")
+    // Config properties. We expose them as def_property (rather than
+    // def_readwrite) so the setter can reject writes while the same
+    // Agent is in a playout call. Without this guard, a second thread
+    // could mutate `simulation_count_base` etc. while playout reads
+    // them under the released GIL — a C++ data race.
+    //
+    // Reads (getters) are not guarded: the playout-internal access is
+    // also a raw read of these fields, so there's no observable
+    // difference from a concurrent Python read. The hazard is only the
+    // write-while-running case, which is what we reject.
+#define STS_AGENT_PROPERTY(NAME, FIELD, DOC) \
+    .def_property(NAME, \
+        [](const search::ScumSearchAgent2 &self) { return self.FIELD; }, \
+        [](search::ScumSearchAgent2 &self, decltype(search::ScumSearchAgent2::FIELD) v) { \
+            AgentBusyGuard guard(self); \
+            self.FIELD = v; \
+        }, \
+        DOC)
+    agent
+        STS_AGENT_PROPERTY("simulation_count_base", simulationCountBase,
+            "number of simulations the agent uses for monte carlo tree search each turn")
+        STS_AGENT_PROPERTY("boss_simulation_multiplier", bossSimulationMultiplier,
+            "bonus multiplier to the simulation count for boss fights")
+        STS_AGENT_PROPERTY("pause_on_card_reward", pauseOnCardReward,
+            "causes the agent to pause so as to cede control to the user when it encounters a card reward choice")
+        STS_AGENT_PROPERTY("print_logs", printLogs,
+            "when set to true, the agent prints state information as it makes actions")
+#undef STS_AGENT_PROPERTY
         .def("playout",
              [](search::ScumSearchAgent2 &self, GameContext &gc) {
                  AgentBusyGuard guard(self);
