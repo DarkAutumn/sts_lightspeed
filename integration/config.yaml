@@ -7,10 +7,11 @@ communication_mod:
   timeout: 30.0
 
   # To set up CommunicationMod with the bridge:
-  # 1. Install ModTheSpire and CommunicationMod
-  # 2. Edit ~/Library/Preferences/ModTheSpire/CommunicationMod/config.properties:
-  #    command=python /path/to/tests/integration/harness/communication_bridge.py --state-dir /tmp/sts_bridge
-  # 3. Launch Slay the Spire through ModTheSpire
+  # 1. Install ModTheSpire and CommunicationMod (Steam Workshop on Linux works fine)
+  # 2. Run integration/setup_communication_mod.sh (writes config.properties)
+  #    - macOS: ~/Library/Preferences/ModTheSpire/CommunicationMod/config.properties
+  #    - Linux: ~/.config/ModTheSpire/CommunicationMod/config.properties
+  # 3. Launch Slay the Spire through ModTheSpire (see integration/STEAM_SETUP.md)
 
 comparison:
   # Tolerances for numeric field comparisons
@@ -88,9 +89,13 @@ launcher:
   # Platform: auto, mac, windows, linux
   platform: auto
 
-  # Steam and game paths (Mac defaults)
-  steam_path: "~/Library/Application Support/Steam"
-  sts_path: "~/Library/Application Support/Steam/steamapps/common/SlayTheSpire"
+  # Steam and game paths.
+  # macOS defaults:
+  #   steam_path: "~/Library/Application Support/Steam"
+  #   sts_path:   "~/Library/Application Support/Steam/steamapps/common/SlayTheSpire"
+  # Linux defaults:
+  steam_path: "~/.local/share/Steam"
+  sts_path: "~/.local/share/Steam/steamapps/common/SlayTheSpire"
 
   # Mods required for testing
   mods:

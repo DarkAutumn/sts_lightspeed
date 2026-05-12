@@ -33,4 +33,14 @@ These are pure header-inclusion fixes, no behavior change.
 
 ### Sync-harness baseline divergence counts
 
-Not yet measured — that's Phase 1.5's job.
+**Status:** Harness is Linux-ready (Phase 1.5 autopilot half done); live
+baseline measurement is deferred — it requires the user to launch the
+game interactively. Counts will be filled in once
+`integration/run_sync_baseline.sh` is run with the live game.
+
+| Character | Scenarios | Live runs | Divergences |
+|---|---|---|---|
+| IRONCLAD | 8 | _pending user_ | _pending user_ |
+| SILENT | n/a | _phase 9a_ | _phase 9a_ |
+| DEFECT | n/a | _phase 9b_ | _phase 9b_ |
+| WATCHER | n/a | _phase 9c_ | _phase 9c_ |
