@@ -7,8 +7,13 @@
 #include <pybind11/stl_bind.h>
 #include <pybind11/functional.h>
 
+#include <atomic>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <algorithm>
+#include <stdexcept>
+#include <unordered_map>
 
 #include "sim/ConsoleSimulator.h"
 #include "sim/search/ScumSearchAgent2.h"
@@ -23,6 +28,55 @@
 
 
 using namespace sts;
+
+namespace {
+    // Per-Agent re-entrance guard. Phase 4 review-fix^2: Agent.playout
+    // mutates instance fields (paused, simulationCountTotal,
+    // gameActionHistory, rng, stepCount), so sharing one Agent across
+    // multiple Python threads under mod_gil_not_used would race. We
+    // detect this at runtime instead of silently producing wrong
+    // results. Users that want parallelism should create one Agent per
+    // thread (the documented pattern).
+    //
+    // Implemented as an external std::atomic_flag map keyed on Agent
+    // address so we don't have to ABI-break ScumSearchAgent2. The map
+    // is itself a Meyers singleton protected by a mutex; the flag
+    // ops themselves are lock-free.
+    struct AgentBusyTable {
+        std::mutex tableMutex;
+        std::unordered_map<const search::ScumSearchAgent2*,
+                           std::unique_ptr<std::atomic<bool>>> flags;
+
+        std::atomic<bool> &flagFor(const search::ScumSearchAgent2 *agent) {
+            std::lock_guard<std::mutex> lock(tableMutex);
+            auto it = flags.find(agent);
+            if (it == flags.end()) {
+                it = flags.emplace(agent,
+                    std::make_unique<std::atomic<bool>>(false)).first;
+            }
+            return *it->second;
+        }
+    };
+
+    AgentBusyTable &agentBusyTable() {
+        static AgentBusyTable table;
+        return table;
+    }
+
+    struct AgentBusyGuard {
+        std::atomic<bool> &flag;
+        AgentBusyGuard(search::ScumSearchAgent2 &agent)
+            : flag(agentBusyTable().flagFor(&agent)) {
+            bool expected = false;
+            if (!flag.compare_exchange_strong(expected, true)) {
+                throw std::runtime_error(
+                    "Agent.playout/playout_battle is not reentrant. "
+                    "Create one Agent per thread instead of sharing.");
+            }
+        }
+        ~AgentBusyGuard() { flag.store(false); }
+    };
+}
 
 PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     m.doc() = "High-performance Slay the Spire simulation library for machine learning and tree search"; // module docstring
@@ -43,8 +97,22 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readwrite("boss_simulation_multiplier", &search::ScumSearchAgent2::bossSimulationMultiplier, "bonus multiplier to the simulation count for boss fights")
         .def_readwrite("pause_on_card_reward", &search::ScumSearchAgent2::pauseOnCardReward, "causes the agent to pause so as to cede control to the user when it encounters a card reward choice")
         .def_readwrite("print_logs", &search::ScumSearchAgent2::printLogs, "when set to true, the agent prints state information as it makes actions")
-        .def("playout", &search::ScumSearchAgent2::playout, pybind11::call_guard<pybind11::gil_scoped_release>())
-        .def("playout_battle", &search::ScumSearchAgent2::playoutCurrentBattle, "plays out only the current battle", pybind11::call_guard<pybind11::gil_scoped_release>());
+        .def("playout",
+             [](search::ScumSearchAgent2 &self, GameContext &gc) {
+                 AgentBusyGuard guard(self);
+                 self.playout(gc);
+             },
+             "Plays out the full run starting from gc. Not reentrant on "
+             "a single Agent instance — create one Agent per thread.",
+             pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("playout_battle",
+             [](search::ScumSearchAgent2 &self, GameContext &gc) {
+                 AgentBusyGuard guard(self);
+                 self.playoutCurrentBattle(gc);
+             },
+             "Plays out only the current battle. Not reentrant on a "
+             "single Agent instance — create one Agent per thread.",
+             pybind11::call_guard<pybind11::gil_scoped_release>());
 
     pybind11::class_<GameContext> gameContext(m, "GameContext");
     gameContext.def(pybind11::init<CharacterClass, std::uint64_t, int>())

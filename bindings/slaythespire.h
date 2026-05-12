@@ -42,7 +42,11 @@ namespace sts {
         const std::vector<int> cardEncodeMap;
         const std::unordered_map<MonsterEncounter, int> bossEncodeMap;
 
-        static inline NNInterface *theInstance = nullptr;
+        // (Phase 4 review-fix^2) The previous `static inline NNInterface
+        // *theInstance` was removed entirely. It was only ever read by
+        // `getInstance()`, and writing it from multiple threads after the
+        // Meyers singleton initializes is still an unsynchronized data
+        // race even when every thread writes the same address.
 
         NNInterface();
 

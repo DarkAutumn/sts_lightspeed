@@ -15,7 +15,6 @@
 #include <algorithm>
 using namespace sts;
 
-static bool haveInitMaps = false;
 static int cardPriorityMap[372] {};
 static int cardPlayMap[372] {};
 static int bossRelicPriorityMap[200] {};
@@ -1092,11 +1091,16 @@ constexpr std::array<RelicId,24> bossRelicPriorities = {
 
 
 void initMaps() {
-    // there are synchronization issues with this if multiple threads start at once
-    if (haveInitMaps) {
-        return;
-    }
-    haveInitMaps = true;
+    // Thread-safe one-shot init. The previous code (`if (haveInitMaps)
+    // return; haveInitMaps = true; ...`) set the flag *before* filling
+    // the maps, so a second thread could observe `haveInitMaps == true`
+    // and start reading partially-initialized tables. Replaced with
+    // std::call_once to keep both first-touch semantics and free-
+    // threading safety. SimpleAgent is not currently exposed via
+    // pybind11, but std::thread-driven C++ callers (apps/test agentMt)
+    // need this too.
+    static std::once_flag initFlag;
+    std::call_once(initFlag, []() {
     for (int i = 0; i < cardPlayPriorities.size(); ++i) {
         CardId c = cardPlayPriorities[i];
         cardPlayMap[static_cast<int>(c)] = i + 1;
@@ -1149,6 +1153,7 @@ void initMaps() {
     isAoeCard.set(static_cast<int>(CardId::IMMOLATE));
     isAoeCard.set(static_cast<int>(CardId::THUNDERCLAP));
     isAoeCard.set(static_cast<int>(CardId::WHIRLWIND));
+    });
 }
 
 struct SimpleAgentInfo {

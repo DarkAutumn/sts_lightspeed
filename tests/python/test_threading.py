@@ -74,6 +74,48 @@ def test_threaded_playouts_independent_seeds_diverge() -> None:
     )
 
 
+def test_shared_agent_rejected_at_runtime() -> None:
+    """Phase 4 review-fix^2 guarantee: if a user shares one Agent
+    instance across threads (the wrong pattern), the second concurrent
+    playout call must fail loudly with RuntimeError, not silently
+    produce corrupt results.
+
+    Implementation: bindings wrap Agent.playout in an AgentBusyGuard
+    that compare_exchange's an atomic flag and throws on contention.
+    """
+    shared_agent = sts.Agent()
+    shared_agent.simulation_count_base = 200
+    shared_agent.print_logs = False
+
+    seen_runtime_error = threading.Event()
+    barrier = threading.Barrier(2)
+
+    def worker(seed: int) -> None:
+        gc = sts.GameContext(sts.CharacterClass.IRONCLAD, seed, 0)
+        try:
+            barrier.wait(timeout=5.0)
+            shared_agent.playout(gc)
+        except RuntimeError as exc:
+            if "not reentrant" in str(exc):
+                seen_runtime_error.set()
+
+    threads = [
+        threading.Thread(target=worker, args=(s,))
+        for s in (4001, 4002)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30.0)
+        assert not t.is_alive(), "worker hung — re-entrance guard deadlocked"
+
+    assert seen_runtime_error.is_set(), (
+        "Sharing one Agent across two threads must surface a "
+        "RuntimeError on the loser. None was observed — either the "
+        "guard isn't engaging or the timing missed the overlap."
+    )
+
+
 @pytest.mark.freethreading
 def test_throughput_scales_under_freethreading() -> None:
     """Phase 4.5 micro-benchmark.
