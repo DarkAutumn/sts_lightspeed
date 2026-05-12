@@ -4,6 +4,8 @@
 
 #include "combat/BattleContext.h"
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 #include "game/GameContext.h"
 #include "game/Game.h"
 
@@ -1888,6 +1890,15 @@ void BattleContext::useAttackCard() {
             break;
         }
 
+        case CardId::SHIV: {
+            int dmg = up ? 6 : 4;
+            if (player.hasStatus<PS::ACCURACY>()) {
+                dmg += player.getStatus<PS::ACCURACY>();
+            }
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, dmg)) );
+            break;
+        }
+
         case CardId::THROUGH_VIOLENCE: {
             const int dmg = calculateCardDamage(c, t, up ? 25 : 20);
             addToBot( Actions::AttackEnemy(t, dmg) );
@@ -1896,11 +1907,7 @@ void BattleContext::useAttackCard() {
         }
 
         default:
-#ifdef sts_asserts
-            std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
-            assert(false);
-#endif
-            break;
+            throw std::runtime_error(std::string("attempted to use unimplemented card: ") + c.getName());
     }
 }
 
@@ -3089,11 +3096,7 @@ void BattleContext::useSkillCard() {
         // BLESSING card doesn't exist - case removed
 
         default:
-#ifdef sts_asserts
-            std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
-            assert(false);
-#endif
-            break;
+            throw std::runtime_error(std::string("attempted to use unimplemented card: ") + c.getName());
     }
 }
 
@@ -3375,11 +3378,7 @@ void BattleContext::usePowerCard() {
         }
 
         default:
-#ifdef sts_asserts
-            std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
-            assert(false);
-#endif
-            break;
+            throw std::runtime_error(std::string("attempted to use unimplemented card: ") + c.getName());
     }
 
 }
@@ -4191,7 +4190,16 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::STANCE_POTION:
-            addToBot(Actions::SetState(InputState::CHOOSE_STANCE_ACTION));
+            // TODO: CHOOSE_STANCE_ACTION input state is not yet wired into the
+            // search-agent enumeration or the Python BattleContext bindings, so
+            // an unresolved stance choice would deadlock the search.
+            // For now we auto-pick CALM (the more common competitive choice).
+            // See docs/KNOWN_ISSUES.md.
+            // Use Actions::ChangeStance so stance enter/exit hooks fire
+            // (CALM-exit energy, VIOLET_LOTUS, MENTAL_FORTRESS, DIVINITY,
+            // RUSHDOWN, etc.). A raw `player.changeStance<CALM>()` would
+            // silently skip all of those.
+            addToBot(Actions::ChangeStance(Stance::CALM));
             break;
 
         case Potion::STRENGTH_POTION:

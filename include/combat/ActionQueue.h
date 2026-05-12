@@ -71,6 +71,7 @@ namespace sts {
     void ActionQueue<capacity>::pushFront(Action a) {
 #ifdef sts_asserts
         assert(size != capacity);
+        assert(a.actFunc);
 #endif
         --front;
         ++size;
@@ -87,6 +88,7 @@ namespace sts {
         if (size >= capacity) {
             assert(false);
         }
+        assert(a.actFunc);
 #endif
         if (back >= capacity) {
             back = 0;

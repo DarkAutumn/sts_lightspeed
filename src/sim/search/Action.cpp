@@ -220,6 +220,21 @@ bool isValidMultiCardSelectAction(const BattleContext &bc, const search::Action 
             return true;
         }
 
+        case sts::CardSelectTask::SCRY: {
+            // SCRY: pick up to bc.cardSelectInfo.scryCount cards from the
+            // top of the draw pile to discard. We accept any subset; the
+            // no-op (empty) selection is the safe default for the search
+            // agent. This is a feature gap (search does not currently
+            // optimize the scry order) but is not a correctness bug.
+            const auto selected = a.getSelectedIdxs();
+            for (auto x : selected) {
+                if (x < 0 || x >= bc.cards.drawPile.size()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         default:
             return false;
     }

@@ -5,6 +5,7 @@
 # Build artifacts
 /build/
 /build_native/
+/build_debug/
 *.o
 *.so
 *.dylib

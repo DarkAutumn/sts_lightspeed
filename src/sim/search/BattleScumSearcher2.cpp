@@ -359,6 +359,8 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
 
         case CardSelectTask::HEADBUTT:
         case CardSelectTask::LIQUID_MEMORIES_POTION:
+        case CardSelectTask::HOLOGRAM:
+        case CardSelectTask::MEDITATE:
             setupCardOptionsHelper(node, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
             break;
 
@@ -376,9 +378,44 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
                                     });
             break;
 
+        case CardSelectTask::SEEK:
+            // Pick a single card from the draw pile to put in hand. No
+            // type filter — the player can SEEK any draw-pile card.
+            setupCardOptionsHelper(node, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
+            break;
+
+        case CardSelectTask::NIGHTMARE:
+        case CardSelectTask::RECYCLE:
+        case CardSelectTask::SETUP:
+            // Single card from hand, no filter. (NIGHTMARE picks a card
+            // *type* to copy; we approximate by indexing into the hand
+            // like RECYCLE/SETUP do — the execution side uses the same
+            // hand-index lookup, see Action.cpp::isValidSingleCardSelectAction.)
+            setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
+            break;
+
         case CardSelectTask::EXHAUST_MANY:
         case CardSelectTask::GAMBLE:
-            // just dont deal with this right now
+        case CardSelectTask::DISCARD:
+            // Multi-select from hand. The search agent intentionally
+            // does not enumerate every subset — we emit one no-op
+            // multi-select (selecting nothing) so the agent moves on.
+            // This matches the original gamerpuppy behavior for
+            // EXHAUST_MANY / GAMBLE; DISCARD is added here so Silent
+            // cards (Acrobatics, Prepared, Survivor, Dagger Throw,
+            // Calculated Gamble, etc.) don't crash the scum search.
+            node.edges.push_back({search::Action(search::ActionType::MULTI_CARD_SELECT, 0)});
+            break;
+
+        case CardSelectTask::SCRY:
+            // SCRY presents N cards from the top of the draw pile and
+            // lets the player discard any subset. Execution-side this
+            // is marked "todo" in BattleSimulator (line 505) and was
+            // not previously reachable by the scum search. We emit a
+            // no-op multi-select (discard nothing, keep all) so the
+            // agent doesn't crash if a SCRY-producing card ever sees
+            // the agent — at worst, the agent never discards scried
+            // cards, which is a strict subset of the legal moves.
             node.edges.push_back({search::Action(search::ActionType::MULTI_CARD_SELECT, 0)});
             break;
 

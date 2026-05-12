@@ -1007,11 +1007,20 @@ Action Actions::UpgradeAllCardsInHand() {
 }
 
 Action Actions::EssenceOfDarkness(int darkOrbsPerSlot) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        const int slots = bc.player.orbSlots;
+        for (int i = 0; i < slots; ++i) {
+            for (int k = 0; k < darkOrbsPerSlot; ++k) {
+                bc.player.channelOrb(bc, Orb::DARK);
+            }
+        }
+    }};
 }
 
 Action Actions::IncreaseOrbSlots(int count) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        bc.player.increaseOrbSlots(count);
+    }};
 }
 
 Action Actions::SuicideAction(int monsterIdx, bool triggerRelics) {
@@ -1027,8 +1036,21 @@ Action Actions::SuicideAction(int monsterIdx, bool triggerRelics) {
     }};
 }
 
-Action Actions::PoisonLoseHpAction() {
-    return sts::Action();
+Action Actions::PoisonLoseHpAction(int monsterIdx) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[monsterIdx];
+        if (m.isDeadOrEscaped()) {
+            return;
+        }
+        const int poisonAmt = m.getStatus<MS::POISON>();
+        if (poisonAmt <= 0) {
+            return;
+        }
+        m.damageUnblockedHelper(bc, poisonAmt);
+        if (!m.isDeadOrEscaped()) {
+            m.decrementStatus<MS::POISON>();
+        }
+    }};
 }
 
 Action Actions::RemovePlayerDebuffs() {

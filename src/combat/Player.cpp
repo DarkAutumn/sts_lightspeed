@@ -679,7 +679,7 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
 
             case PS::FORESIGHT:
                 if (bc.cards.drawPile.empty()) {
-                    bc.addToTop( Actions::SetState(InputState::SHUFFLE_DISCARD_TO_DRAW) );
+                    bc.addToTop( Actions::EmptyDeckShuffle() );
                 }
 //                bc.addToBot( Actions::SetState(InputState::SCRY, pair.second) ); // tood
                 break;

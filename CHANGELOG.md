@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 5.5 — Crash fixes discovered during slaythespire-rl golden-seed bringup
+
+These changes make `Agent.playout` complete cleanly on every (character,
+seed) tuple in `slaythespire-rl/tests/parity/golden_seeds.json` (4
+characters × seeds {1, 42, 1337, 9999, 2025}). Most were stub Actions
+or missing dispatch entries left over from earlier merges. See
+`slaythespire-rl/docs/KNOWN_ISSUES.md` for detail.
+
+#### Fixed
+- **`Actions::PoisonLoseHpAction`**: returned an empty `std::function`
+  that crashed (`std::bad_function_call`) when popped from the action
+  queue. Now takes a `monsterIdx`, applies poison damage via
+  `Monster::damageUnblockedHelper`, and decrements POISON by 1.
+  `Monster::applyStartOfTurnPowers` updated to pass `idx`.
+- **`Actions::EssenceOfDarkness`**: stub replaced with a real
+  implementation that channels `Orb::DARK` per orb slot.
+- **`Actions::IncreaseOrbSlots`**: stub replaced with
+  `Player::increaseOrbSlots(count)`.
+- **`BattleScumSearcher2::enumerateCardSelectActions`**: added cases
+  for `DISCARD`, `HOLOGRAM`, `MEDITATE`, `NIGHTMARE`, `RECYCLE`,
+  `SETUP`, `SEEK`, and `SCRY`. Previously the default branch fired
+  `assert(false)` whenever any Silent / Watcher card-select task
+  reached the search agent.
+- **`Action::isValidMultiCardSelectAction`**: added `SCRY` case that
+  accepts any subset of draw-pile indices.
+- **`Monster::addDebuff<MS::SHACKLED>`**: template specialization was
+  missing; previously hit `assert(false)` in the default branch when
+  Malaise / Piercing Wail (Silent) tried to shackle a monster. Fixed
+  by both reducing the target's `strength` by `amount` AND recording
+  `amount` in the dedicated `shackled` field; `applyEndOfTurnPowers`
+  then restores the strength via `buff<STRENGTH>(shackled)`.
+  Convention: `addDebuff<SHACKLED>` is the "apply the debuff"
+  primitive (used by player cards through `debuffEnemy<>`, which still
+  runs the artifact check first); `buff<SHACKLED>` is the
+  recording-only primitive used by monster-internal effects like
+  `SHIFTING` that manage the strength delta themselves.
+- **`CardId::SHIV`**: was unimplemented in `useAttackCard`. Added a
+  base case: 4/6 damage with `PS::ACCURACY` bonus.
+- **`PS::FORESIGHT` start-of-turn handler**: previously set
+  `InputState::SHUFFLE_DISCARD_TO_DRAW` but nothing transitioned out of
+  that state. Now calls `Actions::EmptyDeckShuffle` directly.
+
+#### Changed
+- **Stance Potion** (`BattleContext::drinkPotion` case
+  `Potion::STANCE_POTION`): previously transitioned to
+  `InputState::CHOOSE_STANCE_ACTION`, which is unhandled by both the
+  search agent and the Python bindings. Now auto-picks `Stance::CALM`
+  via `Actions::ChangeStance(CALM)` so stance enter/exit hooks fire
+  (CALM-exit energy, VIOLET_LOTUS, MENTAL_FORTRESS, DIVINITY,
+  RUSHDOWN). This is a documented soft-degrade (see
+  KNOWN_ISSUES.md); future work will extend the search-action enum to
+  expose the stance choice.
+- **Unimplemented-card branches** in `useAttackCard` / `useSkillCard` /
+  `usePowerCard`: replaced `assert(false)` with
+  `throw std::runtime_error(...)`. Calling an unimplemented card now
+  raises a clean Python `RuntimeError` instead of aborting the
+  process.
+- **`ActionQueue::pushBack` / `pushFront`** (debug-only, behind
+  `STS_ASSERTS`): now assert `a.actFunc` is non-empty. Catches future
+  Action() default-construct mistakes at the push site rather than at
+  the much-later pop site.
+
+#### Build
+- Added `/build_debug/` to `.gitignore` (used for `-O0 -g3
+  -DSTS_ASSERTS=ON` lldb sessions during this phase).
+
 ### Added
 
 #### Defect Character - Complete Card Implementation

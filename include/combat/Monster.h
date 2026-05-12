@@ -353,6 +353,19 @@ namespace sts {
                 setHasStatus<s>(true);
                 return;
 
+            case MonsterStatus::SHACKLED:
+                // SHACKLED is "lose X Strength this turn": reduce strength
+                // now AND record `amount` so applyEndOfTurnPowers can restore
+                // it via buff<STRENGTH>(shackled). Callers that just want to
+                // *record* a restoration amount (e.g. SHIFTING in
+                // damageUnblockedHelper, which already manages the strength
+                // delta itself) should use buff<SHACKLED> instead of
+                // addDebuff<SHACKLED>.
+                shackled += amount;
+                strength -= amount;
+                setHasStatus<s>(true);
+                return;
+
             case MonsterStatus::STRENGTH:
                 strength += amount;
                 setHasStatus<s>(true);
