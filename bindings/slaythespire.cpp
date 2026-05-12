@@ -24,7 +24,7 @@
 
 using namespace sts;
 
-PYBIND11_MODULE(slaythespire, m) {
+PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     m.doc() = "High-performance Slay the Spire simulation library for machine learning and tree search"; // module docstring
     m.def("play", &sts::py::play, "play Slay the Spire Console");
     m.def("get_seed_str", &SeedHelper::getString, "gets the integral representation of seed string used in the game ui");
@@ -43,14 +43,14 @@ PYBIND11_MODULE(slaythespire, m) {
         .def_readwrite("boss_simulation_multiplier", &search::ScumSearchAgent2::bossSimulationMultiplier, "bonus multiplier to the simulation count for boss fights")
         .def_readwrite("pause_on_card_reward", &search::ScumSearchAgent2::pauseOnCardReward, "causes the agent to pause so as to cede control to the user when it encounters a card reward choice")
         .def_readwrite("print_logs", &search::ScumSearchAgent2::printLogs, "when set to true, the agent prints state information as it makes actions")
-        .def("playout", &search::ScumSearchAgent2::playout)
-        .def("playout_battle", &search::ScumSearchAgent2::playoutCurrentBattle, "plays out only the current battle");
+        .def("playout", &search::ScumSearchAgent2::playout, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("playout_battle", &search::ScumSearchAgent2::playoutCurrentBattle, "plays out only the current battle", pybind11::call_guard<pybind11::gil_scoped_release>());
 
     pybind11::class_<GameContext> gameContext(m, "GameContext");
     gameContext.def(pybind11::init<CharacterClass, std::uint64_t, int>())
-        .def("pick_reward_card", &sts::py::pickRewardCard, "choose to obtain the card at the specified index in the card reward list")
-        .def("skip_reward_cards", &sts::py::skipRewardCards, "choose to skip the card reward (increases max_hp by 2 with singing bowl)")
-        .def("get_card_reward", &sts::py::getCardReward, "return the current card reward list")
+        .def("pick_reward_card", &sts::py::pickRewardCard, "choose to obtain the card at the specified index in the card reward list", pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("skip_reward_cards", &sts::py::skipRewardCards, "choose to skip the card reward (increases max_hp by 2 with singing bowl)", pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_card_reward", &sts::py::getCardReward, "return the current card reward list", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def_property_readonly("encounter", [](const GameContext &gc) { return gc.info.encounter; })
         .def_property_readonly("deck",
                [](const GameContext &gc) { return std::vector(gc.deck.cards.begin(), gc.deck.cards.end());},
@@ -1128,15 +1128,15 @@ PYBIND11_MODULE(slaythespire, m) {
         item.card = card;
         item.target = targetIdx;
         bc.addToBotCard(item);
-    });
-    
+    }, pybind11::call_guard<pybind11::gil_scoped_release>());
+
     m.def("potion", [](sts::BattleContext &bc, int action, int slot, int target) {
         if (action == 0) { // DRINK
             bc.drinkPotion(slot, target);
         } else if (action == 1) { // DISCARD
             bc.discardPotion(slot);
         }
-    });
+    }, pybind11::call_guard<pybind11::gil_scoped_release>());
     
     pybind11::class_<sts::ConsoleSimulator>(m, "ConsoleSimulator")
         .def(pybind11::init<>())
