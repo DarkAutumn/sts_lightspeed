@@ -12,6 +12,9 @@
 # Python artifacts
 __pycache__/
 *.pyc
+.venv/
+*.egg-info/
+uv.lock
 
 # OS artifacts
 .DS_Store

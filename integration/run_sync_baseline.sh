@@ -32,10 +32,14 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Sanity-check that the bridge is reachable
-if [ ! -d /tmp/sts_bridge ] || [ ! -f /tmp/sts_bridge/state.json ]; then
+# Sanity-check that the bridge is reachable. The CommunicationMod-side
+# bridge writes /tmp/sts_bridge/game_state.json on every state update
+# and touches /tmp/sts_bridge/bridge_ready.txt once it is ready to
+# receive commands; either being present is sufficient evidence that
+# the bridge is alive.
+if [ ! -d /tmp/sts_bridge ] || { [ ! -f /tmp/sts_bridge/bridge_ready.txt ] && [ ! -f /tmp/sts_bridge/game_state.json ]; }; then
     cat >&2 <<'WARN'
-WARNING: /tmp/sts_bridge/state.json not present.
+WARNING: /tmp/sts_bridge/{bridge_ready.txt, game_state.json} not present.
 This usually means Slay the Spire is not currently running with
 CommunicationMod enabled. The harness will fail to connect.
 

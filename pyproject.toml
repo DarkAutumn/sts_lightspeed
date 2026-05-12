@@ -32,6 +32,13 @@ cmake.version = ">=3.19"
 cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 build-dir = "build/{wheel_tag}"
 wheel.packages = ["python/sts_lightspeed"]
+# NOTE: editable.rebuild is intentionally NOT enabled. The combination of
+# pybind11 + pip build isolation tears down the build environment that
+# initial config depended on, so a transparent rebuild-on-import fails
+# the next time CMake's CONFIGURE_DEPENDS glob invalidates the cache.
+# Native-code changes therefore require: `cmake --build build/<tag>`
+# (or `uv pip install -e . --reinstall --no-deps`) followed by re-import.
+# The Python smoke tests will fail loudly if a stale .so is in use.
 
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_TYPE = "Release"

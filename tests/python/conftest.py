@@ -2,9 +2,14 @@
 
 Adds the build directory to sys.path so the compiled `slaythespire`
 module is importable in tests without requiring `pip install -e .` first.
+
+Picks the build dir whose extension suffix matches the running interpreter
+so we don't accidentally pull a stock-3.14 .so into a 3.14t test session
+(or vice versa).
 """
 from __future__ import annotations
 
+import importlib.machinery
 import sys
 import sysconfig
 from pathlib import Path
@@ -23,16 +28,35 @@ def _candidate_build_dirs():
                 yield sub
 
 
+def _abi_suffixes() -> tuple[str, ...]:
+    suffixes = tuple(importlib.machinery.EXTENSION_SUFFIXES)
+    if not suffixes:
+        return (".so",)
+    return suffixes
+
+
+def _extension_matches_abi(so_path: Path, abi_suffixes: tuple[str, ...]) -> bool:
+    name = so_path.name
+    return any(name.endswith(suf) for suf in abi_suffixes)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     # Add the Python package dir
     python_dir = _REPO_ROOT / "python"
     if python_dir.is_dir():
         sys.path.insert(0, str(python_dir))
-    # Then locate the compiled extension
+    abi_suffixes = _abi_suffixes()
+    fallback: Path | None = None
     for d in _candidate_build_dirs():
         for so in d.glob("slaythespire*.so"):
-            sys.path.insert(0, str(d))
-            return
+            if _extension_matches_abi(so, abi_suffixes):
+                sys.path.insert(0, str(d))
+                return
+            if fallback is None:
+                fallback = d
+    if fallback is not None:
+        sys.path.insert(0, str(fallback))
+        return
     raise pytest.UsageError(
         "Could not find compiled slaythespire extension. Run cmake build "
         "or `uv pip install -e .` before pytest."

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Setup script for CommunicationMod integration (macOS + Linux)
 
+set -euo pipefail
+
 BRIDGE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/harness/communication_bridge.py"
 STATE_DIR="/tmp/sts_bridge"
 

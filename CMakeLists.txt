@@ -11,7 +11,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS  "-Wno-shift-count-overflow -O3")
 
 add_subdirectory(json)
-add_subdirectory(pybind11)
+
+# Prefer a system / build-system-supplied pybind11 (so scikit-build-core
+# can pin >=2.13.6 via pyproject.toml's build-system.requires, which is
+# needed for Python 3.14 free-threading). Fall back to the bundled
+# submodule for plain CMake builds without one installed.
+find_package(pybind11 2.6 CONFIG QUIET)
+if(NOT pybind11_FOUND)
+    add_subdirectory(pybind11)
+endif()
+message(STATUS "Using pybind11 version: ${pybind11_VERSION}")
 
 pybind11_add_module(slaythespire bindings/slaythespire.cpp bindings/bindings-util.cpp ${sts_lightspeed_SOURCES})
 target_include_directories(slaythespire PUBLIC include)
