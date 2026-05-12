@@ -1178,7 +1178,31 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("cost_for_turn", &sts::CardInstance::costForTurn)
         .def_property_readonly("name", [](const sts::CardInstance &c) { return c.getName(); })
         .def("is_upgraded", &sts::CardInstance::isUpgraded)
-        .def("requires_target", &sts::CardInstance::requiresTarget);
+        .def("requires_target", &sts::CardInstance::requiresTarget)
+        .def("can_use",
+            [](const sts::CardInstance &c, const sts::BattleContext &bc, int target, bool in_autoplay) {
+                // Bounds-check ``target`` before forwarding to canUse:
+                // for target-requiring cards canUse reads
+                // ``bc.monsters.arr[target]`` without its own range
+                // check, so an out-of-range index from Python would
+                // dereference garbage. Treat OOB indices as "not
+                // legal" rather than segfaulting.
+                if (c.requiresTarget()) {
+                    if (target < 0 || target >= bc.monsters.monsterCount) {
+                        return false;
+                    }
+                }
+                return c.canUse(bc, target, in_autoplay);
+            },
+            pybind11::arg("bc"),
+            pybind11::arg("target") = 0,
+            pybind11::arg("in_autoplay") = false,
+            "Engine-level legality check for playing this card against the given target. "
+            "Out-of-range targets for target-requiring cards return False rather than segfault.")
+        .def("can_use_on_any_target",
+            &sts::CardInstance::canUseOnAnyTarget,
+            pybind11::arg("bc"),
+            "Engine-level check whether the card is playable against any living monster (slower; for mask use)");
         
     pybind11::class_<sts::Monster>(m, "Monster")
         .def_readonly("cur_hp", &sts::Monster::curHp)
@@ -1626,6 +1650,10 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("player", &sts::BattleContext::player)
         .def_readonly("monsters", &sts::BattleContext::monsters)
         .def_readonly("cards", &sts::BattleContext::cards)
+        .def("is_card_play_allowed", &sts::BattleContext::isCardPlayAllowed,
+            "Engine-level check: is any card play currently permitted? "
+            "False during e.g. Entangled-only-attacks-allowed turns where "
+            "the player still has hand cards but cannot play them.")
 
         .def("get_monster_damage", [](const sts::BattleContext &bc, int idx) {
              if(idx < 0 || idx >= bc.monsters.monsterCount) return 0;

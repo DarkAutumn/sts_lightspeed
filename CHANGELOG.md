@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 8 — Legality bindings for the Gym wrapper
+
+Adds three thin engine-legality bindings that the slaythespire-rl
+Gymnasium action-mask uses to defer correctness to the engine rather
+than re-implementing rules in Python.
+
+#### Added
+- **`BattleContext.is_card_play_allowed() -> bool`** — wraps
+  `BattleContext::isCardPlayAllowed()`. False during e.g. Entangled-
+  blocks-attacks turns where the player has hand cards but cannot
+  legally play any.
+- **`CardInstance.can_use(bc, target=0, in_autoplay=False) -> bool`** —
+  wraps `CardInstance::canUse(...)`. Covers cost, target alive/
+  targetable, status flags (Confused / curse-without-relic / etc.),
+  energy, and free-play paths.
+- **`CardInstance.can_use_on_any_target(bc) -> bool`** — wraps
+  `CardInstance::canUseOnAnyTarget(...)` (cost + at-least-one-legal-
+  target). The engine notes this is slower; intended for mask code.
+
+#### Known limitation
+- `BattleContext::chooseNightmareCard(int)` is declared in the header
+  but **not defined** in ben-w-smith's source. NIGHTMARE (Silent card,
+  `CardSelectTask::NIGHTMARE`) cannot be resolved from Python today.
+  The Gym wrapper currently leaves NIGHTMARE unhandled (truncates the
+  episode via its stuck-state guard). To be addressed in Phase 9 when
+  Silent is brought up.
+
 ### Phase 7 — Battle observation encoder (NNInterface extension)
 
 Adds a numpy-typed combat-state observation API to `NNInterface`,
