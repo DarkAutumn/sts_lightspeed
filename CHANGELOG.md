@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 7 — Battle observation encoder (NNInterface extension)
+
+Adds a numpy-typed combat-state observation API to `NNInterface`,
+adapted from `SimoneBarbaro/sts_lightspeed` but extended to
+ben-w-smith's full enum surface. This is the primary input the
+forthcoming `slaythespire-rl` Gymnasium environment will hand to a
+policy network.
+
+#### Added
+- **`NNInterface.battle_observation_size`** property (currently 10443
+  on this codebase): the fixed length of the battle observation array.
+- **`NNInterface.getBattleObservation(gc, bc) -> np.ndarray`**: a 1-D
+  `int32` numpy array encoding the entire `BattleContext`:
+  - 8 player core slots (curHp, maxHp, block, energy, str, dex, focus,
+    artifact)
+  - 8 player meta slots (hp%, stance one-hot ×4, orbSlots,
+    monsterTurnIdx, energyPerTurn)
+  - one slot per `PlayerStatus` (101 slots) read from `Player::statusMap`
+  - hand: 10 positional slots × `numCards*2` one-hot (upgrade-doubled)
+  - draw/discard/exhaust: 3 × `numCards*2` count vectors (capped 30)
+  - potion one-hot over `numPotions`
+  - relic one-hot over `relicSlotCount` (matches out-of-battle layout)
+  - 5 monster slots × {hp, maxHp, block, 14 MonsterStatus slots,
+    MonsterId one-hot, isAttack, attackCount, damage}
+- **`NNInterface.getBattleObservationMaximums() -> np.ndarray`**: same
+  shape with per-slot upper bounds for observation normalization.
+- `numCards`, `numStatuses`, `numPotions`, `numMonsterIds` constants
+  declared on `NNInterface`.
+
+#### Changed
+- `NNInterface::getInstance()` is now bound with
+  `pybind11::return_value_policy::reference` so pybind11 stops
+  attempting to delete the Meyers singleton at module unload. This was
+  a **pre-existing** latent bug (a `free(): invalid size` abort
+  reproducible on master @ 3caec99 with `python -c "import
+  slaythespire; slaythespire.getNNInterface()"`) that we tripped over
+  the moment we wrote tests that actually call `getNNInterface()`.
+  Fixed via `pybind11::return_value_policy::reference` on
+  `m.def("getNNInterface", ...)`.
+- `def_property_readonly("observation_space_size", []() {...})`
+  changed to take `const NNInterface &` so it can actually be invoked
+  on an instance. The old signature was unreachable from Python (it
+  was registered as an instance property but the bound lambda took no
+  arguments, so attribute access raised TypeError). Same pattern
+  applied to the new `battle_observation_size` property.
+
+#### Tests
+- `tests/test_battle_observation.py` (15 tests) in the
+  `slaythespire-rl` repo covers:
+  - Surface (constants exist and are positive ints)
+  - Shape & dtype (1-D int array, length == `battle_observation_size`)
+  - Determinism (same seed → same observation)
+  - Seed-dependence (different seeds → different observations)
+  - Cross-character coverage (all 4 chars produce observations within
+    the `getBattleObservationMaximums` envelope)
+  - Behavior under play (encoding changes after `play_card`)
+  - Thread-safety (N=8 distinct BCs encoded in parallel match serial
+    encoding)
+  - Singleton lifetime (`getNNInterface()` is safe to call repeatedly
+    and to dispose of without aborting)
+  - Phase 7 review-fix #1 regression: Silent-vs-Ironclad cards encode
+    distinct slots (pre-fix all non-red cards collided onto slot 0).
+  - Phase 7 review-fix #2 regression: bit-only statuses don't crash
+    or trip the maximums envelope.
+
+#### Rubber-duck pass 1 findings (RESOLVED)
+- **`[BUG]`** `cardInstanceIdx` used `cardEncodeMap`, which only assigns
+  slots for red+colorless cards. Silent/Defect/Watcher cards collided
+  onto slot 0. **Fixed** by indexing by raw `CardId` value: `idx = id *
+  2 + upgraded`, sized to `numCards * 2`. The legacy `cardEncodeMap`
+  is still used by the older meta-state `getObservation` (Ironclad
+  deck encoding) — Phase 7 only changes the battle encoder.
+- **`[CORRECTNESS]`** Player status iteration only walked
+  `p.statusMap`. Several real combat-affecting statuses (BARRICADE,
+  CORRUPTION, CONFUSED, PEN_NIB, SURROUNDED, …) are stored in
+  `statusBits0/1` bit-fields outside the map. **Fixed** by iterating
+  `0..numStatuses-1` and using map values when present, else encoding
+  `1` for bit-set statuses. We can't call `Player::getStatusRuntime`
+  here because it does `statusMap.at(s)` for the default branch,
+  which throws for bit-only statuses (latent bug, deferred).
+
 ### Phase 6 — Full BattleContext Python bindings (jdc5549 port)
 
 Brings the Python module from a thin wrapper around `Agent.playout`

@@ -6,6 +6,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 #include <pybind11/functional.h>
+#include <pybind11/numpy.h>
 
 #include <atomic>
 #include <memory>
@@ -91,12 +92,34 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     m.def("get_seed_str", &SeedHelper::getString, "gets the integral representation of seed string used in the game ui");
     m.def("get_seed_long", &SeedHelper::getLong, "gets the seed string representation of an integral seed");
     m.def("get_potion_name", &sts::getPotionName, "Get the string name of a potion");
-    m.def("getNNInterface", &sts::NNInterface::getInstance, "gets the NNInterface object");
+    m.def("getNNInterface", &sts::NNInterface::getInstance,
+          pybind11::return_value_policy::reference,
+          "gets the NNInterface object (Meyers singleton; do not delete)");
 
     pybind11::class_<NNInterface> nnInterface(m, "NNInterface");
     nnInterface.def("getObservation", &NNInterface::getObservation, "get observation array given a GameContext")
         .def("getObservationMaximums", &NNInterface::getObservationMaximums, "get the defined maximum values of the observation space")
-        .def_property_readonly("observation_space_size", []() { return NNInterface::observation_space_size; });
+        .def_property_readonly("observation_space_size",
+             [](const NNInterface &) { return NNInterface::observation_space_size; })
+        .def("getBattleObservation",
+             [](const NNInterface &self, const GameContext &gc, const BattleContext &bc) {
+                 auto arr = self.encodeBattle(gc, bc);
+                 // Return as 1-D int32 numpy array (copy).
+                 pybind11::array_t<int> result(arr.size());
+                 std::copy(arr.begin(), arr.end(), result.mutable_data());
+                 return result;
+             },
+             "get battle observation as a numpy int array; len == battle_observation_size")
+        .def("getBattleObservationMaximums",
+             [](const NNInterface &self) {
+                 auto arr = self.getBattleObservationMaximums();
+                 pybind11::array_t<int> result(arr.size());
+                 std::copy(arr.begin(), arr.end(), result.mutable_data());
+                 return result;
+             },
+             "get per-slot maxima for the battle observation array")
+        .def_property_readonly("battle_observation_size",
+             [](const NNInterface &) { return NNInterface::battle_observation_size; });
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());

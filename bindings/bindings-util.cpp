@@ -10,6 +10,12 @@
 #include "sim/PrintHelpers.h"
 #include "game/Game.h"
 #include "game/Map.h"
+#include "combat/BattleContext.h"
+#include "combat/Player.h"
+#include "combat/Monster.h"
+#include "combat/MonsterGroup.h"
+#include "combat/CardManager.h"
+#include "constants/MonsterStatusEffects.h"
 
 #include "slaythespire.h"
 
@@ -129,6 +135,228 @@ namespace sts {
         bossMap[ME::AWAKENED_ONE] = 8;
         bossMap[ME::THE_HEART] = 9;
         return bossMap;
+    }
+
+    std::array<int, NNInterface::battle_observation_size>
+    NNInterface::encodeBattle(const GameContext &gc, const BattleContext &bc) const {
+        std::array<int, battle_observation_size> ret {};
+        int offset = 0;
+
+        const Player &p = bc.player;
+
+        // --- 8 player core ---
+        ret[offset++] = std::max(0, p.curHp);
+        ret[offset++] = std::max(0, p.maxHp);
+        ret[offset++] = std::max(0, p.block);
+        ret[offset++] = std::max(0, static_cast<int>(p.energy));
+        ret[offset++] = p.strength;
+        ret[offset++] = p.dexterity;
+        ret[offset++] = p.focus;
+        ret[offset++] = p.artifact;
+
+        // --- 8 player meta ---
+        int hpPct = (p.maxHp > 0)
+            ? std::min(100, (100 * std::max(0, p.curHp)) / p.maxHp)
+            : 0;
+        ret[offset++] = hpPct;
+        // stance one-hot over 4 (NEUTRAL, WRATH, CALM, DIVINITY)
+        {
+            int stanceIdx = static_cast<int>(p.stance);
+            if (stanceIdx >= 0 && stanceIdx < 4) {
+                ret[offset + stanceIdx] = 1;
+            }
+        }
+        offset += 4;
+        ret[offset++] = p.orbSlots;
+        ret[offset++] = bc.monsterTurnIdx;
+        ret[offset++] = static_cast<int>(p.energyPerTurn);
+
+        // --- numStatuses ---
+        // Phase 7 review-fix: iterate ALL PlayerStatus values, not just
+        // statusMap. Several real combat-affecting statuses are stored in
+        // bit-fields outside statusMap (BARRICADE, CORRUPTION, CONFUSED,
+        // PEN_NIB, SURROUNDED, ...). We can't call `getStatusRuntime`
+        // directly here because it calls `statusMap.at(s)` for the default
+        // branch and that throws for bit-only statuses (a latent bug in
+        // Player::getStatusRuntime — out of scope for Phase 7). So
+        // hand-roll the lookup: statusMap value wins, else 1 if the bit is
+        // set, else 0.
+        for (int sIdx = 0; sIdx < numStatuses; ++sIdx) {
+            auto s = static_cast<PlayerStatus>(sIdx);
+            auto it = p.statusMap.find(s);
+            if (it != p.statusMap.end()) {
+                ret[offset + sIdx] = it->second;
+            } else if (p.hasStatusRuntime(s)) {
+                // Bit-only boolean status (BARRICADE, etc.). Encode as 1.
+                // Note: STRENGTH/DEX/FOCUS/ARTIFACT are already encoded in
+                // player core; hasStatusRuntime returns truthy for those
+                // too, so they'll get an extra slot here as well, which is
+                // fine for an RL observation (redundant signal, no
+                // ambiguity).
+                ret[offset + sIdx] = 1;
+            }
+        }
+        offset += numStatuses;
+
+        // --- hand (10 positional slots × numCards*2 one-hot) ---
+        // Phase 7 review-fix: index by raw CardId value, not the
+        // legacy `cardEncodeMap`. The map in
+        // `createOneHotCardEncodingMap()` only assigns slots to red +
+        // colorless cards (used by the meta-state getObservation for
+        // the out-of-battle deck encoding, which is Ironclad-only). For
+        // the battle encoder we need all four characters' cards to
+        // have distinct slots, so we use the raw enum value scaled by
+        // upgrade bit.
+        auto cardInstanceBattleIdx = [&](const CardInstance &ci) -> int {
+            int id = static_cast<int>(ci.id);
+            if (id < 0 || id >= numCards) return -1;
+            return id * 2 + (ci.isUpgraded() ? 1 : 0);
+        };
+        for (int slot = 0; slot < handPositions; ++slot) {
+            if (slot < bc.cards.cardsInHand) {
+                int idx = cardInstanceBattleIdx(bc.cards.hand[slot]);
+                if (idx >= 0 && idx < numCards * 2) {
+                    ret[offset + idx] = 1;
+                }
+            }
+            offset += numCards * 2;
+        }
+
+        // --- draw / discard / exhaust count vectors ---
+        auto encodePileCounts = [&](const std::vector<CardInstance> &pile) {
+            for (const auto &c : pile) {
+                int idx = cardInstanceBattleIdx(c);
+                if (idx >= 0 && idx < numCards * 2) {
+                    ret[offset + idx] = std::min(ret[offset + idx] + 1, 30);
+                }
+            }
+            offset += numCards * 2;
+        };
+        encodePileCounts(bc.cards.drawPile);
+        encodePileCounts(bc.cards.discardPile);
+        encodePileCounts(bc.cards.exhaustPile);
+
+        // --- potions one-hot (over numPotions slots) ---
+        for (int i = 0; i < gc.potionCount; ++i) {
+            int potIdx = static_cast<int>(gc.potions[i]);
+            if (potIdx >= 0 && potIdx < numPotions) {
+                ret[offset + potIdx] = 1;
+            }
+        }
+        offset += numPotions;
+
+        // --- relic one-hot (out-of-battle layout) ---
+        for (auto r : gc.relics.relics) {
+            int rIdx = static_cast<int>(r.id);
+            if (rIdx >= 0 && rIdx < relicSlotCount) {
+                ret[offset + rIdx] = 1;
+            }
+        }
+        offset += relicSlotCount;
+
+        // --- 5 monster slots ---
+        for (int i = 0; i < maxMonsters; ++i) {
+            const Monster *m = (i < bc.monsters.monsterCount) ? &bc.monsters.arr[i] : nullptr;
+            if (m != nullptr && !m->isDeadOrEscaped()) {
+                ret[offset + 0] = std::max(0, m->curHp);
+                ret[offset + 1] = std::max(0, m->maxHp);
+                ret[offset + 2] = std::max(0, m->block);
+            }
+            offset += 3;
+
+            if (m != nullptr && !m->isDeadOrEscaped()) {
+                for (int s = 0; s < monsterStatusCount; ++s) {
+                    auto ms = static_cast<MonsterStatus>(s);
+                    ret[offset + s] = m->getStatusInternal(ms);
+                }
+            }
+            offset += monsterStatusCount;
+
+            if (m != nullptr && !m->isDeadOrEscaped()) {
+                int mid = static_cast<int>(m->id);
+                if (mid >= 0 && mid < numMonsterIds) {
+                    ret[offset + mid] = 1;
+                }
+            }
+            offset += numMonsterIds;
+
+            if (m != nullptr && !m->isDeadOrEscaped()) {
+                MMID nextMove = m->moveHistory[0];
+                bool isAttack = isMoveAttack(nextMove);
+                ret[offset + 0] = isAttack ? 1 : 0;
+                if (isAttack) {
+                    DamageInfo dmg = m->getMoveBaseDamage(bc);
+                    ret[offset + 1] = dmg.attackCount;
+                    ret[offset + 2] = m->calculateDamageToPlayer(bc, dmg.damage);
+                }
+            }
+            offset += 3;
+        }
+
+        // sanity: offset should equal battle_observation_size
+        assert(offset == battle_observation_size);
+        return ret;
+    }
+
+    std::array<int, NNInterface::battle_observation_size>
+    NNInterface::getBattleObservationMaximums() const {
+        std::array<int, battle_observation_size> ret {};
+        int offset = 0;
+
+        // player core
+        ret[offset++] = playerHpMax;      // curHp
+        ret[offset++] = playerHpMax;      // maxHp
+        ret[offset++] = 999;              // block
+        ret[offset++] = 99;               // energy
+        ret[offset++] = 999;              // strength
+        ret[offset++] = 999;              // dexterity
+        ret[offset++] = 999;              // focus
+        ret[offset++] = 999;              // artifact
+
+        // player meta
+        ret[offset++] = 100;              // hp pct
+        std::fill(ret.begin() + offset, ret.begin() + offset + 4, 1);  // stance
+        offset += 4;
+        ret[offset++] = 10;               // orbSlots
+        ret[offset++] = 99;               // monsterTurnIdx (can transiently
+                                          // exceed monsterCount when iterating
+                                          // through end-of-round actions)
+        ret[offset++] = 99;               // energyPerTurn
+
+        // statuses: arbitrarily generous cap
+        std::fill(ret.begin() + offset, ret.begin() + offset + numStatuses, 999);
+        offset += numStatuses;
+
+        // hand 10 × numCards*2 (one-hot)
+        std::fill(ret.begin() + offset, ret.begin() + offset + numCards * 2 * handPositions, 1);
+        offset += numCards * 2 * handPositions;
+
+        // 3 pile count vectors (capped at 30)
+        std::fill(ret.begin() + offset, ret.begin() + offset + numCards * 2 * 3, 30);
+        offset += numCards * 2 * 3;
+
+        // potions, relics: one-hot
+        std::fill(ret.begin() + offset, ret.begin() + offset + numPotions, 1);
+        offset += numPotions;
+        std::fill(ret.begin() + offset, ret.begin() + offset + relicSlotCount, 1);
+        offset += relicSlotCount;
+
+        // monster blocks
+        for (int i = 0; i < maxMonsters; ++i) {
+            ret[offset++] = playerHpMax * 5;   // monster hp (some bosses > 200)
+            ret[offset++] = playerHpMax * 5;   // monster maxHp
+            ret[offset++] = 999;               // monster block
+            std::fill(ret.begin() + offset, ret.begin() + offset + monsterStatusCount, 999);
+            offset += monsterStatusCount;
+            std::fill(ret.begin() + offset, ret.begin() + offset + numMonsterIds, 1);
+            offset += numMonsterIds;
+            ret[offset++] = 1;                 // isAttack
+            ret[offset++] = 30;                // attackCount
+            ret[offset++] = 999;               // damage
+        }
+
+        assert(offset == battle_observation_size);
+        return ret;
     }
 
     NNInterface* NNInterface::getInstance() {
