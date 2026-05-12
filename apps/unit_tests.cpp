@@ -9,6 +9,9 @@
 
 #include "constants/Relics.h"
 #include "combat/Player.h"
+#include "game/Game.h"
+#include "game/Map.h"
+#include "slaythespire.h"
 
 using namespace sts;
 
@@ -141,11 +144,31 @@ void test_relic_bit_segments_cover_enum() {
                 "RED_CIRCLET should live in segment 2 (>=128)");
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3.3: NNInterface::observation_space_size must reserve one slot per
+// RelicId. Previously hard-coded to 412 (which only covered 178 relic slots)
+// and would overflow when CIRCLET (id 178) or RED_CIRCLET (id 179) appeared
+// in the relics list.
+// ---------------------------------------------------------------------------
+void test_observation_space_size_covers_all_relics() {
+    constexpr int kHead = 4 /*hp,maxHp,gold,floor*/ + 10 /*boss*/ + 220 /*deck*/;
+    EXPECT_EQ(NNInterface::observation_space_size,
+              kHead + static_cast<int>(RelicId::INVALID),
+              "observation_space_size must equal head + #relics");
+    EXPECT_EQ(NNInterface::relicSlotCount,
+              static_cast<int>(RelicId::INVALID),
+              "relicSlotCount must equal RelicId::INVALID");
+    EXPECT_TRUE(kHead + static_cast<int>(RelicId::RED_CIRCLET)
+                    < NNInterface::observation_space_size,
+                "RED_CIRCLET index must be in-bounds");
+}
+
 } // anonymous namespace
 
 int main() {
     test_relic_bits_round_trip();
     test_relic_bit_segments_cover_enum();
+    test_observation_space_size_covers_all_relics();
     std::fprintf(stderr, "Ran %d assertions, %d failures.\n",
                  g_assertions, g_failures);
     return g_failures == 0 ? 0 : 1;

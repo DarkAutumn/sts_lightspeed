@@ -57,7 +57,7 @@ namespace sts {
             int encodeIdx = offset + static_cast<int>(r.id);
             ret[encodeIdx] = 1;
         }
-        offset += 178;
+        offset += relicSlotCount;
 
         return ret;
     }
@@ -70,16 +70,16 @@ namespace sts {
         ret[1] = playerHpMax;
         ret[2] = playerGoldMax;
         ret[3] = 60;
-        spaceOffset += 3;
+        spaceOffset += 4;
 
-        std::fill(ret.begin()+spaceOffset, ret.end(), 1);
+        std::fill(ret.begin()+spaceOffset, ret.begin()+spaceOffset+10, 1);
         spaceOffset += 10;
 
-        std::fill(ret.begin()+spaceOffset, ret.end(), cardCountMax);
+        std::fill(ret.begin()+spaceOffset, ret.begin()+spaceOffset+220, cardCountMax);
         spaceOffset += 220;
 
-        std::fill(ret.begin()+spaceOffset, ret.end(), 1);
-        spaceOffset += 178;
+        std::fill(ret.begin()+spaceOffset, ret.begin()+spaceOffset+relicSlotCount, 1);
+        spaceOffset += relicSlotCount;
 
         return ret;
     }

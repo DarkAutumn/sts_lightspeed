@@ -10,14 +10,34 @@
 #include <array>
 
 #include "constants/Rooms.h"
+#include "constants/Relics.h"
+#include "constants/MonsterEncounters.h"
 
 namespace sts {
 
+    class GameContext;
+    struct Card;
+
     struct NNInterface {
-        static constexpr int observation_space_size = 412;
+        // observation_space layout (offsets / widths):
+        //   [0]      curHp                                (max playerHpMax)
+        //   [1]      maxHp                                (max playerHpMax)
+        //   [2]      gold                                 (max playerGoldMax)
+        //   [3]      floor                                (max 60)
+        //   [4..13]  boss one-hot (10 bosses)             (max 1)
+        //   [14..233] deck encoding (220 card slots)      (max cardCountMax)
+        //   [234..]   relic one-hot (one slot per RelicId, INVALID-many slots).
+        //             RelicId::INVALID is the sentinel "no relic" so the
+        //             width is static_cast<int>(RelicId::INVALID) == 180.
+        // Prior versions of this code allocated only 178 relic slots, which
+        // caused an out-of-bounds write when the player ever held CIRCLET
+        // (id 178) or RED_CIRCLET (id 179).
         static constexpr int playerHpMax = 200;
         static constexpr int playerGoldMax = 1800;
         static constexpr int cardCountMax = 7;
+        static constexpr int relicSlotCount = static_cast<int>(RelicId::INVALID);
+        static constexpr int observation_space_size =
+            4 /*hp,maxHp,gold,floor*/ + 10 /*boss*/ + 220 /*deck*/ + relicSlotCount;
 
         const std::vector<int> cardEncodeMap;
         const std::unordered_map<MonsterEncounter, int> bossEncodeMap;
