@@ -27,7 +27,10 @@ namespace sts {
 
         SimHelpers();
 
-        static inline SimHelpers *theInstance = nullptr;
+        // Returns the (lazy, thread-safe) process-wide instance.
+        // Replaces the previous `static inline SimHelpers *theInstance`
+        // pointer, which was raced by free-threaded Python (Phase 4).
+        static SimHelpers &getInstance();
 
     public:
         static MonsterId getMonsterIdForString(const std::string &s);

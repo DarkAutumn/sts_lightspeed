@@ -132,10 +132,18 @@ namespace sts {
     }
 
     NNInterface* NNInterface::getInstance() {
+        // Meyers singleton: C++11 guarantees thread-safe initialization
+        // of function-local statics. Replaces the previous pointer-check
+        // pattern which raced under the free-threaded Python build (the
+        // module is declared mod_gil_not_used in Phase 4, so concurrent
+        // Python threads can call sts.getNNInterface() simultaneously
+        // on first import). theInstance is still set to the address for
+        // any legacy callers that read it directly.
+        static NNInterface instance;
         if (theInstance == nullptr) {
-            theInstance = new NNInterface;
+            theInstance = &instance;
         }
-        return theInstance;
+        return &instance;
     }
 
 }

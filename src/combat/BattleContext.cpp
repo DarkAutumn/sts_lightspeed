@@ -11,6 +11,11 @@ using namespace sts;
 
 namespace sts {
     thread_local BattleContext *g_debug_bc;
+
+    // Definition for BattleContext::sum (declared static thread_local
+    // in include/combat/BattleContext.h). thread_local statics with
+    // non-trivial init need an out-of-line definition.
+    thread_local int BattleContext::sum = 0;
 }
 
 

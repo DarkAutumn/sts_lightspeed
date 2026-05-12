@@ -12,7 +12,11 @@
 
 using namespace sts;
 
-std::int64_t simulationIdx = 0; // for debugging
+// Process-wide debug counter; only used for `std::cerr` traces and
+// benchmark prints. Made thread_local for safety under the
+// free-threaded Python build (Phase 4): non-atomic RMW from N parallel
+// playouts is UB even when the value is "just debug".
+thread_local std::int64_t simulationIdx = 0;
 
 namespace sts::search {
     thread_local search::BattleScumSearcher2 *g_debug_scum_search;
