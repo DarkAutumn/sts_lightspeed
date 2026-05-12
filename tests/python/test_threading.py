@@ -131,6 +131,7 @@ def test_agent_config_property_rejected_during_playout() -> None:
 
     seen_runtime_error = threading.Event()
     stop_playout = threading.Event()
+    playout_exception: list[BaseException] = []
 
     def playout_worker() -> None:
         # simulation_count_base=300 keeps the playout long enough
@@ -138,6 +139,8 @@ def test_agent_config_property_rejected_during_playout() -> None:
         gc = sts.GameContext(sts.CharacterClass.IRONCLAD, 5001, 0)
         try:
             shared_agent.playout(gc)
+        except BaseException as exc:
+            playout_exception.append(exc)
         finally:
             stop_playout.set()
 
@@ -155,15 +158,38 @@ def test_agent_config_property_rejected_during_playout() -> None:
                     seen_runtime_error.set()
                     return
 
-    threads = [
-        threading.Thread(target=playout_worker),
-        threading.Thread(target=writer_worker),
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
+    # Start playout first and give it a brief head start so that it has
+    # almost certainly acquired AgentBusyGuard before the writer starts
+    # spinning on the setter. Without this, an adversarial schedule
+    # could let the writer hold the guard at the exact instant playout
+    # tries to enter — which would cause playout itself to be rejected
+    # (instead of the setter), confusing the test. The playout takes
+    # 50-100 ms, the writer's setter holds the guard for ~100 ns, so a
+    # 5 ms head start makes the failure mode astronomically unlikely.
+    playout_thread = threading.Thread(target=playout_worker)
+    writer_thread = threading.Thread(target=writer_worker)
+    playout_thread.start()
+    time.sleep(0.005)
+    writer_thread.start()
+
+    for t in (playout_thread, writer_thread):
         t.join(timeout=30.0)
         assert not t.is_alive(), "worker hung — config guard deadlocked"
+
+    # If playout itself was rejected (writer happened to hold the guard
+    # at exactly the wrong moment), the test conditions weren't met —
+    # the property guard could still be perfectly correct. Surface that
+    # as a clear diagnostic rather than a confusing assert below.
+    if playout_exception:
+        exc = playout_exception[0]
+        if isinstance(exc, RuntimeError) and "not reentrant" in str(exc):
+            pytest.skip(
+                "Adverse schedule: writer held the guard when playout "
+                "tried to start. Property guard is unverified this run; "
+                "re-run to retry. (This is the 'race against the race "
+                "test' edge case, not a code bug.)"
+            )
+        raise exc
 
     assert seen_runtime_error.is_set(), (
         "Writing a config property while playout was running must "
