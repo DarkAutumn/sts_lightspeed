@@ -16,7 +16,7 @@ add_subdirectory(json)
 # can pin >=2.13.6 via pyproject.toml's build-system.requires, which is
 # needed for Python 3.14 free-threading). Fall back to the bundled
 # submodule for plain CMake builds without one installed.
-find_package(pybind11 2.6 CONFIG QUIET)
+find_package(pybind11 2.13.6 CONFIG QUIET)
 if(NOT pybind11_FOUND)
     add_subdirectory(pybind11)
 endif()
