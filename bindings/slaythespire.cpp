@@ -119,7 +119,43 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
              },
              "get per-slot maxima for the battle observation array")
         .def_property_readonly("battle_observation_size",
-             [](const NNInterface &) { return NNInterface::battle_observation_size; });
+             [](const NNInterface &) { return NNInterface::battle_observation_size; })
+        .def_property_readonly("battle_obs_layout",
+             [](const NNInterface &) {
+                 // Phase 15: expose the integer offsets/sizes that define the
+                 // battle observation layout so Python-side code (e.g. the
+                 // position-shuffle wrapper) can slice the array reliably
+                 // without duplicating C++ constants.
+                 pybind11::dict d;
+                 d["player_core_size"]    = NNInterface::playerCoreSize;
+                 d["player_meta_size"]    = NNInterface::playerMetaSize;
+                 d["num_statuses"]        = NNInterface::numStatuses;
+                 d["num_cards"]           = NNInterface::numCards;
+                 d["card_block_size"]     = NNInterface::numCards * 2;
+                 d["hand_positions"]      = NNInterface::handPositions;
+                 d["num_potions"]         = NNInterface::numPotions;
+                 d["relic_slot_count"]    = NNInterface::relicSlotCount;
+                 d["max_monsters"]        = NNInterface::maxMonsters;
+                 d["monster_block_size"]  = NNInterface::monsterBlockSize;
+                 d["monster_status_count"]= NNInterface::monsterStatusCount;
+                 d["num_monster_ids"]     = NNInterface::numMonsterIds;
+                 d["total_size"]          = NNInterface::battle_observation_size;
+                 // Pre-computed start offsets for convenience.
+                 int off = 0;
+                 d["off_player_core"]   = off; off += NNInterface::playerCoreSize;
+                 d["off_player_meta"]   = off; off += NNInterface::playerMetaSize;
+                 d["off_statuses"]      = off; off += NNInterface::numStatuses;
+                 d["off_hand"]          = off;
+                 off += NNInterface::numCards * 2 * NNInterface::handPositions;
+                 d["off_draw_pile"]     = off; off += NNInterface::numCards * 2;
+                 d["off_discard_pile"]  = off; off += NNInterface::numCards * 2;
+                 d["off_exhaust_pile"]  = off; off += NNInterface::numCards * 2;
+                 d["off_potions"]       = off; off += NNInterface::numPotions;
+                 d["off_relics"]        = off; off += NNInterface::relicSlotCount;
+                 d["off_monsters"]      = off;
+                 return d;
+             },
+             "Layout descriptor for the battle observation array (Phase 15)");
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());
