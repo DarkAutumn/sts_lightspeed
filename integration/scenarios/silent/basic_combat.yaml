@@ -1,0 +1,50 @@
+# Basic Silent combat test scenario.
+# Phase 9.a sync gate: verify Silent's starting deck plays the same
+# in the live Steam game and in the simulator.
+
+name: "Basic Silent Combat"
+description: "Test basic combat with Silent starting deck against the act 1 first-floor encounter"
+character: SILENT
+ascension: 0
+
+steps:
+  - type: choose
+    option: 0  # Neow reward
+
+  - type: map
+    node: 0    # First available map node
+
+  # Silent starting hand draws 5 from a 10-card deck:
+  # 5x Strike (Green), 5x Defend (Green), 1x Survivor, 1x Neutralize.
+  # Greedy: play Neutralize on monster 0 (1 cost, weak + 3 dmg),
+  # then Strikes, then end turn.
+  - type: play
+    card: "Neutralize"
+    target: 0
+
+  - type: play
+    card: "Strike_G"
+    target: 0
+
+  - type: play
+    card: "Strike_G"
+    target: 0
+
+  - type: end_turn
+
+  - type: play
+    card: "Strike_G"
+    target: 0
+
+  - type: end_turn
+
+expected:
+  combat_start:
+    player_hp:
+      min: 70
+      max: 70
+    player_energy: 3
+    hand_size: 5
+
+  after_combat:
+    screen: "reward"

@@ -1,0 +1,47 @@
+# Basic Defect combat test scenario.
+# Phase 9.b sync gate.
+
+name: "Basic Defect Combat"
+description: "Test basic combat with Defect starting deck against the act 1 first-floor encounter"
+character: DEFECT
+ascension: 0
+
+steps:
+  - type: choose
+    option: 0
+
+  - type: map
+    node: 0
+
+  # Defect starts with 4x Strike_B, 4x Defend_B, 1x Zap, 1x Dualcast.
+  # Defect starts at 75 HP. Greedy play: Zap (channel orb), Strikes,
+  # then end turn so Dualcast has orbs to evoke later.
+  - type: play
+    card: "Zap"
+
+  - type: play
+    card: "Strike_B"
+    target: 0
+
+  - type: play
+    card: "Strike_B"
+    target: 0
+
+  - type: end_turn
+
+  - type: play
+    card: "Strike_B"
+    target: 0
+
+  - type: end_turn
+
+expected:
+  combat_start:
+    player_hp:
+      min: 75
+      max: 75
+    player_energy: 3
+    hand_size: 5
+
+  after_combat:
+    screen: "reward"

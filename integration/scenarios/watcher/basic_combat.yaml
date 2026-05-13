@@ -1,0 +1,44 @@
+# Basic Watcher combat test scenario.
+# Phase 9.c sync gate.
+
+name: "Basic Watcher Combat"
+description: "Test basic combat with Watcher starting deck against the act 1 first-floor encounter"
+character: WATCHER
+ascension: 0
+
+steps:
+  - type: choose
+    option: 0
+
+  - type: map
+    node: 0
+
+  # Watcher starts with 4x Strike_P, 4x Defend_P, 1x Eruption, 1x Vigilance.
+  # Watcher starts at 72 HP. Greedy: enter Wrath via Eruption (deals
+  # 9 dmg + Wrath stance), Strikes hit hard in Wrath.
+  - type: play
+    card: "Eruption"
+    target: 0
+
+  - type: play
+    card: "Strike_P"
+    target: 0
+
+  - type: end_turn
+
+  - type: play
+    card: "Strike_P"
+    target: 0
+
+  - type: end_turn
+
+expected:
+  combat_start:
+    player_hp:
+      min: 72
+      max: 72
+    player_energy: 3
+    hand_size: 5
+
+  after_combat:
+    screen: "reward"
