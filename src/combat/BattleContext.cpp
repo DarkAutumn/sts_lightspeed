@@ -3979,6 +3979,40 @@ void BattleContext::afterMonsterTurns() {
         return;
     }
 
+    // NIGHTMARE: at the start of the turn AFTER the card was played, drop
+    // the queued copies into hand BEFORE normal draw. Real-StS ordering:
+    // the chosen card's copies enter first and count toward the 10-card
+    // hand cap, so any subsequent draw that would overflow goes to the
+    // discard pile instead of the NIGHTMARE copies. This matters when
+    // retained cards (Wraith Form, Well-Laid Plans, Equilibrium) leave
+    // hand near cap.
+    //
+    // KNOWN LIMITATION: Player::nightmareCards is fixed-size [2], which
+    // covers exactly one Nightmare per turn. Two Nightmares played in the
+    // same turn currently overwrite each other's stash (the second
+    // chooseNightmareCard call replaces the first's queued copies). This
+    // matches the existing field declaration; bumping the array would be
+    // a separate engine change.
+    //
+    // Note: the queued CardInstance snapshot preserves stat-equivalent
+    // state (cost, base damage/block/magic, upgrade level) but does NOT
+    // reset card-specific `misc`/`specialData` mutations made earlier in
+    // combat (e.g., Rampage's accumulated damage bonus, Ritual Dagger's
+    // damage). This matches the existing chooseDualWieldCard pattern in
+    // this engine; the engine has no per-card "stat-equivalent copy"
+    // helper. Out-of-scope for Phase 9.x.5.
+    if (player.nightmareCount > 0) {
+        addToBot( Action([](BattleContext &b) {
+            for (int i = 0; i < b.player.nightmareCount; ++i) {
+                CardInstance c = b.player.nightmareCards[i];
+                c.uniqueId = static_cast<std::int16_t>(b.cards.nextUniqueCardId++);
+                b.cards.notifyAddCardToCombat(c);
+                b.moveToHandHelper(c);
+            }
+            b.player.nightmareCount = 0;
+        }) );
+    }
+
     addToBot(Actions::DrawCards(player.cardDrawPerTurn)); // in this action, an effect queue item is added to rechard energy lol
 
     if (player.hasStatus<PS::DRAW_REDUCTION>()) {
@@ -4314,6 +4348,40 @@ void BattleContext::chooseSetupCard(int handIdx) {
     cards.removeFromHandAtIdx(handIdx);
     c.costForTurn = 0;
     cards.drawPile.push_back(c);
+}
+
+void BattleContext::chooseNightmareCard(int handIdx) {
+    // NIGHTMARE: choose a card in your hand. Next turn, add 2 copies of
+    // that card into your hand. NIGHTMARE itself was exhausted before
+    // this card-select screen opened; the chosen card is NOT removed
+    // from hand (player keeps it).
+    //
+    // Engine notes:
+    //   - The chosen CardInstance is snapshotted with its current upgrade
+    //     state and persistent attributes, then has combat-only
+    //     attributes reset so the next-turn copies start fresh (e.g. a
+    //     card whose costForTurn was reduced this turn returns to its
+    //     base cost on the new copies).
+    //   - Player::nightmareCards is fixed-size [2] (matches the
+    //     existing field declaration); see the matching note in
+    //     afterMonsterTurns about the one-Nightmare-per-turn limitation.
+    //   - The injection at start of next turn is wired up in
+    //     afterMonsterTurns().
+    if (handIdx < 0 || handIdx >= cards.cardsInHand) {
+        // No-op on invalid index. Upstream callers (BattleSimulator,
+        // search::Action, the new pybind11 binding) are expected to
+        // validate before calling, but we defend in depth.
+        return;
+    }
+
+    CardInstance chosen = cards.hand[handIdx];
+    chosen.costForTurn = chosen.cost;
+    chosen.freeToPlayOnce = false;
+    chosen.retain = false;
+
+    player.nightmareCards[0] = chosen;
+    player.nightmareCards[1] = chosen;
+    player.nightmareCount = 2;
 }
 
 void BattleContext::chooseDiscardCards(const fixed_list<int,10> &idxs) {

@@ -354,6 +354,9 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
             break;
 
         case CardSelectTask::NIGHTMARE:
+            os << "Nightmare: Choose a card in your hand. Add 2 copies of "
+                  "that card into your hand next turn.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:
@@ -489,7 +492,8 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
             bc->chooseDiscardToHandCard(std::stoi(action), false);
             break;
 
-        case CardSelectTask::NIGHTMARE:  // todo
+        case CardSelectTask::NIGHTMARE:
+            bc->chooseNightmareCard(std::stoi(action));
             break;
 
         case CardSelectTask::RECYCLE: // todo

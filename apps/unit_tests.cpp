@@ -8,8 +8,13 @@
 #include <cstring>
 
 #include "constants/Relics.h"
+#include "constants/CardPools.h"
+#include "constants/MonsterEncounters.h"
 #include "combat/Player.h"
+#include "combat/CardInstance.h"
+#include "combat/BattleContext.h"
 #include "game/Game.h"
+#include "game/GameContext.h"
 #include "game/Map.h"
 #include "slaythespire.h"
 
@@ -163,12 +168,95 @@ void test_observation_space_size_covers_all_relics() {
                 "RED_CIRCLET index must be in-bounds");
 }
 
+// ---------------------------------------------------------------------------
+// Phase 9.x.5: BattleContext::chooseNightmareCard implementation. Verifies
+// that playing NIGHTMARE opens a CARD_SELECT(NIGHTMARE) screen and that
+// resolving it queues 2 copies of the chosen card into the next-turn hand.
+//
+// The deck is {NIGHTMARE, NEUTRALIZE x4} so the post-injection assertion
+// can strictly distinguish injected copies from natural-redraw: deck has
+// only 4 NEUTRALIZEs, so a next-turn hand with > 4 NEUTRALIZEs proves the
+// injection ran.
+// ---------------------------------------------------------------------------
+void test_choose_nightmare_card_injects_two_copies() {
+    GameContext gc(CharacterClass::SILENT, 1, 0);
+
+    while (gc.deck.size() > 0) {
+        gc.deck.remove(gc, 0);
+    }
+    gc.deck.obtain(gc, Card(CardId::NIGHTMARE));
+    for (int i = 0; i < 4; ++i) {
+        gc.deck.obtain(gc, Card(CardId::NEUTRALIZE));
+    }
+
+    BattleContext bc;
+    bc.init(gc, MonsterEncounter::CULTIST);
+
+    int nightmareIdx = -1;
+    for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+        if (bc.cards.hand[i].id == CardId::NIGHTMARE) { nightmareIdx = i; break; }
+    }
+    EXPECT_TRUE(nightmareIdx >= 0,
+                "NIGHTMARE must be in opening hand of {NIGHTMARE,4xNeutralize}");
+    if (nightmareIdx < 0) return;
+
+    bc.addToBotCard(CardQueueItem(bc.cards.hand[nightmareIdx], 0, bc.player.energy));
+    bc.inputState = InputState::EXECUTING_ACTIONS;
+    bc.executeActions();
+
+    EXPECT_EQ(bc.inputState, InputState::CARD_SELECT,
+              "playing NIGHTMARE should leave inputState == CARD_SELECT");
+    EXPECT_EQ(bc.cardSelectInfo.cardSelectTask, CardSelectTask::NIGHTMARE,
+              "card-select task should be NIGHTMARE after playing it");
+
+    int targetIdx = -1;
+    for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+        if (bc.cards.hand[i].id == CardId::NEUTRALIZE) { targetIdx = i; break; }
+    }
+    EXPECT_TRUE(targetIdx >= 0,
+                "expected NEUTRALIZE in hand after NIGHTMARE play");
+    if (targetIdx < 0) return;
+
+    bc.chooseNightmareCard(targetIdx);
+
+    EXPECT_EQ(bc.player.nightmareCount, 2,
+              "chooseNightmareCard should set nightmareCount=2");
+    EXPECT_EQ(bc.player.nightmareCards[0].id, CardId::NEUTRALIZE,
+              "queued card should be NEUTRALIZE");
+    EXPECT_EQ(bc.player.nightmareCards[1].id, CardId::NEUTRALIZE,
+              "queued card should be NEUTRALIZE (2nd copy)");
+
+    bc.inputState = InputState::EXECUTING_ACTIONS;
+    bc.executeActions();
+    EXPECT_EQ(bc.inputState, InputState::PLAYER_NORMAL,
+              "after chooseNightmareCard + pump, inputState should be PLAYER_NORMAL");
+
+    bc.endTurn();
+    bc.inputState = InputState::EXECUTING_ACTIONS;
+    bc.executeActions();
+
+    if (bc.outcome != Outcome::UNDECIDED) {
+        return;
+    }
+
+    int neutralizeCopies = 0;
+    for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+        if (bc.cards.hand[i].id == CardId::NEUTRALIZE) ++neutralizeCopies;
+    }
+    EXPECT_TRUE(neutralizeCopies > 4,
+                "next-turn hand should contain >4 NEUTRALIZE copies "
+                "(deck has only 4; >4 proves NIGHTMARE injection ran)");
+    EXPECT_EQ(bc.player.nightmareCount, 0,
+              "nightmareCount should be reset to 0 after injection");
+}
+
 } // anonymous namespace
 
 int main() {
     test_relic_bits_round_trip();
     test_relic_bit_segments_cover_enum();
     test_observation_space_size_covers_all_relics();
+    test_choose_nightmare_card_injects_two_copies();
     std::fprintf(stderr, "Ran %d assertions, %d failures.\n",
                  g_assertions, g_failures);
     return g_failures == 0 ? 0 : 1;

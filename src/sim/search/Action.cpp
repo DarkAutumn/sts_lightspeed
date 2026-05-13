@@ -410,8 +410,11 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseWarcryCard(idx);
             break;
 
-        case CardSelectTask::MEDITATE:
         case CardSelectTask::NIGHTMARE:
+            bc.chooseNightmareCard(idx);
+            break;
+
+        case CardSelectTask::MEDITATE:
         case CardSelectTask::RECYCLE:
         case CardSelectTask::SEEK:
             // not implemented
@@ -538,6 +541,7 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::SETUP:
         case CardSelectTask::WARCRY:
+        case CardSelectTask::NIGHTMARE:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
 

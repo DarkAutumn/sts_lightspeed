@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 9.x.5 — `BattleContext::chooseNightmareCard` engine impl
+
+Resolves the Phase 8 known limitation: NIGHTMARE (Silent power, cost 3,
+"Choose a card in your hand. Add 2 copies of that card into your hand
+next turn.") is now fully supported end-to-end.
+
+#### Added
+- **`BattleContext::chooseNightmareCard(int handIdx)`** — implementation
+  in `src/combat/BattleContext.cpp`. Snapshots the chosen card, resets
+  combat-only attrs (`costForTurn`, `freeToPlayOnce`, `retain`),
+  stores 2 copies in `Player::nightmareCards[2]`, sets
+  `Player::nightmareCount = 2`, then closes the card-select screen.
+- **Start-of-next-turn injection** in `BattleContext::afterMonsterTurns`
+  — right after the `addToBot(Actions::DrawCards(player.cardDrawPerTurn))`
+  call, we queue a no-capture lambda that drains
+  `Player::nightmareCards` into the new hand via
+  `notifyAddCardToCombat` + `moveToHandHelper` (which routes 10-card-cap
+  overflow to discard). FIFO queue ordering means the normal draw
+  resolves first; the 2 NIGHTMARE copies arrive on top.
+- **`BattleContext.choose_nightmare_card(hand_idx)`** Python binding
+  with hand-index bounds guard, GIL release, and action-queue pump.
+- **Sim-driver wiring**: `BattleSimulator.cpp` (display + execute) and
+  `Action.cpp` (search-agent action enumeration) now route NIGHTMARE
+  through the new method instead of leaving it as a `// todo` no-op.
+- **C++ unit test** in `apps/unit_tests.cpp`: drives a Silent
+  `BattleContext` with `{NIGHTMARE, 4×STRIKE_GREEN}`, plays NIGHTMARE,
+  resolves the card-select, end-turn, asserts ≥2 STRIKE_GREEN copies
+  appear in the next-turn hand and `nightmareCount` resets to 0.
+- **Python regression tests** in `tests/python/test_nightmare_engine.py`
+  (3 tests): binding exists; full lifecycle (CARD_SELECT → choose →
+  next-turn injection); out-of-range bounds-guard.
+
+#### Resolved
+- Phase 8 known limitation: NIGHTMARE Python binding is now defined and
+  the gym dispatcher in `slaythespire-rl/sts_gym/combat_env.py` routes
+  NIGHTMARE to `bc.choose_nightmare_card(0)` instead of triggering a
+  stuck-state truncation.
+
+#### Known limitation
+- The engine's `Player::nightmareCards[2]` field is sized for ONE
+  NIGHTMARE per turn. If a player plays two NIGHTMAREs in the same
+  turn, the second `chooseNightmareCard` call overwrites the first's
+  queued copies. Bumping the array (and the corresponding loop bound
+  in the injection lambda) would lift this; deferred since it requires
+  an engine-wide schema change and Silent's deck-builder rarely
+  produces that scenario.
+- The queued `CardInstance` snapshot preserves stat-equivalent state
+  (cost, base damage/block/magic, upgrade level) but does NOT reset
+  card-specific `misc` / `specialData` mutations made earlier in
+  combat (e.g., Rampage's accumulated damage bonus, Ritual Dagger's
+  in-combat damage). This matches the existing `chooseDualWieldCard`
+  pattern in the engine, which has no per-card "stat-equivalent copy"
+  helper. Out-of-scope for Phase 9.x.5; would require a per-card
+  reset table.
+
+#### Verified
+- C++ `apps/unit_tests`: 1275 assertions, 0 failures.
+- `tests/python/` on .venv (3.14): 34 passed, 1 skipped.
+- `tests/python/` on .venv-3.14t (3.14t free-threaded): 35 passed.
+- `slaythespire-rl/tests/`: 95 passed (the obsolete
+  `test_nightmare_marked_unsupported` was inverted to
+  `test_nightmare_dispatched_to_choose_nightmare_card`).
+
 ### Phase 9.x.4 — Sync-harness translator + sim-driver fix
 
 Fixes the long-standing "all scenarios pass with `Steps: 0`" no-op
@@ -123,13 +186,10 @@ than re-implementing rules in Python.
   `CardInstance::canUseOnAnyTarget(...)` (cost + at-least-one-legal-
   target). The engine notes this is slower; intended for mask code.
 
-#### Known limitation
-- `BattleContext::chooseNightmareCard(int)` is declared in the header
-  but **not defined** in ben-w-smith's source. NIGHTMARE (Silent card,
-  `CardSelectTask::NIGHTMARE`) cannot be resolved from Python today.
-  The Gym wrapper currently leaves NIGHTMARE unhandled (truncates the
-  episode via its stuck-state guard). To be addressed in Phase 9 when
-  Silent is brought up.
+#### Phase-8 known limitation (RESOLVED in Phase 9.x.5)
+- ~~`BattleContext::chooseNightmareCard(int)` is declared in the header
+  but **not defined** in ben-w-smith's source.~~ Fixed in Phase 9.x.5;
+  see that section above.
 
 ### Phase 7 — Battle observation encoder (NNInterface extension)
 

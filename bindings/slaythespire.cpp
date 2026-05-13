@@ -1494,6 +1494,15 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
             },
             "Choose a card in discard pile to put on top of draw pile (Headbutt); pumps the action queue",
             pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("choose_nightmare_card",
+            [](sts::BattleContext &bc, int hand_idx) {
+                if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
+                bc.chooseNightmareCard(hand_idx);
+                bc.inputState = sts::InputState::EXECUTING_ACTIONS;
+                bc.executeActions();
+            },
+            "Choose a card in hand to add 2 copies of into hand next turn (Nightmare); pumps the action queue",
+            pybind11::call_guard<pybind11::gil_scoped_release>())
         .def("choose_recycle_card",
             [](sts::BattleContext &bc, int hand_idx) {
                 if (hand_idx < 0 || hand_idx >= bc.cards.cardsInHand) return;
