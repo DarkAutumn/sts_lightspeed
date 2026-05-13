@@ -203,4 +203,54 @@ See the project audit for detailed test coverage gaps:
 
 ---
 
-*Last updated: 2026-05-12 (Phase 9.x.4 — added sync-harness divergence section)*
+## Engine bugs (Phase 12 stress-test discovery)
+
+### ISSUE-110: `ScumSearchAgent2` / `BattleScumSearcher2` crash on Silent + Watcher
+**Location:** `src/sim/search/BattleScumSearcher2.cpp:171` and
+`include/combat/Monster.h:423` (template `Monster::hasStatus<MS:8>()`)
+**Severity:** Medium (deterministic; serial-reproducible)
+**Status:** Open
+**First seen:** Phase 12 multi-character stress run
+(`apps/stress_test.cpp`, threads=1, per_char=128, start_seed=1)
+
+**Description:**
+When `ScumSearchAgent2::playout` (which drives multi-encounter
+playouts via `BattleScumSearcher2`) is invoked for Silent or Watcher,
+the engine SEGVs in at least two places:
+
+- `Monster::hasStatus<(MonsterStatus)8>()` (status enum value 8) —
+  reached via `BattleScumSearcher2` cleanup paths.
+- `BattleScumSearcher2::playoutRandom` line 171:29 — null dereference
+  during random-action sampling.
+
+Both crashes are deterministic per (character, seed). The same seeds
+that crash on Silent generally pass on IRONCLAD.
+
+A separate finding: Silent's `Bullet Time` card throws
+`std::runtime_error("attempted to use unimplemented card: Bullet
+Time")` from somewhere inside `BattleContext::useCard`. This is a
+known feature gap, not a memory-safety issue — `apps/stress_test.cpp`
+catches `std::runtime_error` and treats it as a skip.
+
+**Hypothesis:**
+The `BattleScumSearcher2` was originally written against IRONCLAD
+only. Its action-enumeration table doesn't include some Silent / Watcher
+cards, and when its random-playout path returns an action that points
+into a dead/uninitialised Monster slot (e.g. after a fight ends mid
+search), the next status query SEGVs.
+
+**Workaround until fixed:**
+`apps/stress_test.cpp` defaults to IRONCLAD-only. Set
+`STRESS_ALL_CHARS=1` to opt into the broken paths (useful for repro
+work but not for CI).
+
+**Impact on RL training:**
+None. The slaythespire-rl combat env does **not** use
+`ScumSearchAgent2`. It drives `BattleContext` directly via the
+pybind11 bindings, with the agent's own action selection. The
+`stress_test` crashes are only a problem for users running the C++
+`Agent.playout()` API on non-IRONCLAD characters.
+
+---
+
+*Last updated: 2026-05-13 (Phase 12 — added ISSUE-110)*

@@ -6,6 +6,8 @@
 /build/
 /build_native/
 /build_debug/
+/build_tsan/
+/build_asan/
 *.o
 *.so
 *.dylib

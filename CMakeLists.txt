@@ -51,6 +51,16 @@ target_include_directories(unit_tests PUBLIC include)
 target_include_directories(unit_tests PUBLIC json/single_include)
 target_include_directories(unit_tests PUBLIC bindings)
 
+# Phase 12 stress test: multi-character multithreaded playout driver.
+# Designed to run under TSan/ASan/UBSan to validate the free-threaded
+# C++ surface end-to-end across all four characters.
+add_executable(stress_test apps/stress_test.cpp ${sts_lightspeed_SOURCES})
+target_link_libraries(stress_test PRIVATE nlohmann_json::nlohmann_json)
+target_include_directories(stress_test PUBLIC include)
+target_include_directories(stress_test PUBLIC json/single_include)
+find_package(Threads REQUIRED)
+target_link_libraries(stress_test PRIVATE Threads::Threads)
+
 # Wheel install: scikit-build-core picks up these install() rules and
 # packages the .so into the wheel (alongside the python/sts_lightspeed
 # package). Only the Python extension is installed; the C++ test apps
