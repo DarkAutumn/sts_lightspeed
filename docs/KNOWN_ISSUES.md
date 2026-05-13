@@ -91,7 +91,13 @@ Steam StS) and the in-process simulator side-by-side via
 **Location:** `integration/harness/simulator_controller.py:_get_deck_state`
 (reads `card.cost` via the slaythespire pybind11 bindings)
 **Severity:** Medium
-**Status:** Open
+**Status:** **RESOLVED** (Phase 9.x.4 follow-up — `sts_lightspeed`
+commit pending). The `Card` pybind11 binding now exposes a `cost`
+property that delegates to the engine's static `getEnergyCost(id,
+upgraded)` lookup, and the harness reads it directly. Pre-fix, the
+harness's `hasattr(card, 'cost')` fallback returned `-1` for every
+deck card outside combat because the value-type `Card` had no `cost`
+field — that field lives on `CardInstance` (combat-time only).
 **First seen:** Phase 9.x.4 baseline run, scenario
 `integration/scenarios/ironclad/basic_combat.yaml`, step 0
 

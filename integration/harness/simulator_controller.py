@@ -152,8 +152,8 @@ class SimulatorController:
             deck.append({
                 'id': str(card.id),
                 'name': card.name if hasattr(card, 'name') else repr(card),
-                'cost': card.cost if hasattr(card, 'cost') else -1,
-                'upgraded': card.upgraded if hasattr(card, 'upgraded') else False,
+                'cost': card.cost,
+                'upgraded': card.upgraded,
             })
         return deck
 

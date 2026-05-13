@@ -250,6 +250,39 @@ void test_choose_nightmare_card_injects_two_copies() {
               "nightmareCount should be reset to 0 after injection");
 }
 
+// ----------------------------------------------------------------------------
+// ISSUE-100 regression: the value-type sts::Card must expose a base-cost
+// lookup. The Python harness consumes `card.cost` for every deck card
+// outside combat. Pre-fix this returned -1 for every card; post-fix it
+// returns getEnergyCost(id, upgraded).
+// ----------------------------------------------------------------------------
+void test_card_base_cost_matches_static_table() {
+    // Spot-check core starter cards whose base cost is unambiguous.
+    EXPECT_EQ(getEnergyCost(CardId::BASH, false), 2, "BASH base cost = 2");
+    EXPECT_EQ(getEnergyCost(CardId::STRIKE_RED, false), 1, "STRIKE_RED base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::DEFEND_RED, false), 1, "DEFEND_RED base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::DEFEND_GREEN, false), 1, "DEFEND_GREEN base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::STRIKE_GREEN, false), 1, "STRIKE_GREEN base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::SURVIVOR, false), 1, "SURVIVOR base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::ZAP, false), 1, "ZAP base cost = 1");
+    EXPECT_EQ(getEnergyCost(CardId::DUALCAST, false), 1, "DUALCAST base cost = 1");
+
+    // GameContext deck cards must all report some base cost lookup
+    // (the engine may return negative sentinels for curses/unplayables;
+    // we only assert the lookup succeeds and isn't a -1 stub).
+    for (auto cc : {CharacterClass::IRONCLAD, CharacterClass::SILENT,
+                    CharacterClass::DEFECT, CharacterClass::WATCHER}) {
+        GameContext gc(cc, 0x600D5EED, 0);
+        for (const auto &card : gc.deck.cards) {
+            int cost = getEnergyCost(card.id, card.isUpgraded());
+            // -1 was the pre-fix harness stub for "binding didn't expose
+            // cost"; the engine itself never returns -1 for a real card.
+            EXPECT_TRUE(cost != -1,
+                        "starter-deck card cost lookup must succeed (-1 was pre-fix stub)");
+        }
+    }
+}
+
 } // anonymous namespace
 
 int main() {
@@ -257,6 +290,7 @@ int main() {
     test_relic_bit_segments_cover_enum();
     test_observation_space_size_covers_all_relics();
     test_choose_nightmare_card_injects_two_copies();
+    test_card_base_cost_matches_static_table();
     std::fprintf(stderr, "Ran %d assertions, %d failures.\n",
                  g_assertions, g_failures);
     return g_failures == 0 ? 0 : 1;

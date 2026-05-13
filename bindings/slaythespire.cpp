@@ -281,7 +281,15 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_property_readonly("is_strikeCard", &Card::isStrikeCard)
         .def_property_readonly("is_starter_strike_or_defend", &Card::isStarterStrikeOrDefend)
         .def_property_readonly("rarity", &Card::getRarity)
-        .def_property_readonly("type", &Card::getType);
+        .def_property_readonly("type", &Card::getType)
+        // Base energy cost from the static card data (sts::getEnergyCost).
+        // The value-type `Card` doesn't carry an instance cost the way
+        // `CardInstance` does — without this, harness code reads -1 for
+        // every deck card outside combat (ISSUE-100). X-cost cards are
+        // exposed as -1 here (their cost-on-play is set by combat).
+        .def_property_readonly("cost", [](const Card &c) {
+            return sts::getEnergyCost(c.id, c.isUpgraded());
+        });
 
     pybind11::enum_<GameOutcome> gameOutcome(m, "GameOutcome");
     gameOutcome.value("UNDECIDED", GameOutcome::UNDECIDED)
