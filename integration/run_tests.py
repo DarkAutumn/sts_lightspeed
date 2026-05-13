@@ -353,7 +353,14 @@ class TestRunner:
         )
 
     def run_scenario(self, scenario_path: str) -> TestResult:
-        """Run a YAML scenario file.
+        """Run a YAML scenario file in lockstep against the live game.
+
+        Drives the live game (via CommunicationMod) and the in-process
+        simulator together, sending the same logical action to each and
+        comparing post-action state. Live game must already be at the main
+        menu (CommunicationMod's only available commands are `start` and
+        `state`); this method sends `start <character> <ascension> [seed]`
+        to begin a new run, then walks scenario steps.
 
         Args:
             scenario_path: Path to the YAML scenario file.
@@ -368,36 +375,133 @@ class TestRunner:
             test_name=scenario.name,
             seed=scenario.seed or 12345,
             character=scenario.character,
-            ascension=scenario.ascension
+            ascension=scenario.ascension,
         )
         self._current_result = result
 
-        # Initialize simulator
+        # 1) Drive the live game into a new run, if connected. The actual
+        #    int64 seed picked by the game (which differs from the
+        #    user-typed seed string) is then used to initialise the
+        #    simulator so both sides start from the exact same RNG state.
+        live_seed = scenario.seed
+        if self.game:
+            try:
+                live_state = self.game.start_game(
+                    character=scenario.character,
+                    ascension=scenario.ascension,
+                    seed=scenario.seed,
+                    timeout=15.0,
+                )
+                # Read the actual seed the live game settled on; convert
+                # to a signed int64 for the simulator.
+                try:
+                    raw_seed = (live_state.get('game_state') or live_state).get('seed') \
+                        if isinstance(live_state, dict) else None
+                    if raw_seed is not None:
+                        from tests.integration.harness.seed_synchronizer import SeedSynchronizer
+                        live_seed = SeedSynchronizer.convert_seed_to_int64(raw_seed)
+                        gs = live_state.get('game_state') or live_state
+                        print(f"  [scenario] live game started; "
+                              f"seed={live_seed} (raw={raw_seed!r}), "
+                              f"floor={gs.get('floor')}, "
+                              f"room_phase={gs.get('room_phase')}")
+                except Exception as e:
+                    print(f"  [scenario] WARNING: could not extract live seed ({e}); "
+                          f"falling back to scenario seed {scenario.seed}")
+            except Exception as e:
+                # When connected to a live game, a start_game failure means
+                # we cannot run a meaningful sync test. Failing fast here is
+                # critical: silently falling back to sim-only would report
+                # a passing scenario without any live comparison, hiding
+                # divergences (the very thing this harness exists to find).
+                err = (f"live-game start_game failed: {e!r}. Refusing to run "
+                       f"scenario as sim-only because that would silently "
+                       f"hide live-vs-sim divergences. Reset the live game "
+                       f"to the main menu and retry.")
+                print(f"  [scenario] ERROR: {err}")
+                result.passed = False
+                result.error_message = err
+                result.finalize()
+                return result
+
+        # 2) Initialise the simulator with the live game's actual seed
+        #    (or, if we're not connected to a live game, the scenario seed).
         self.init_simulator(
-            seed=scenario.seed or 12345,
+            seed=live_seed if live_seed is not None else 12345,
             character=scenario.character,
-            ascension=scenario.ascension
+            ascension=scenario.ascension,
         )
 
-        # Execute scenario steps
-        for step in scenario.steps:
+        # 3) Walk the scenario steps. Each step is translated into a
+        #    (game_command, sim_command) pair and applied via
+        #    run_synchronized_step, which also compares post-action states.
+        skipped_steps = 0
+        for step_idx, step in enumerate(scenario.steps):
+            # `verify` is an in-line assertion — it does NOT advance the
+            # game; it just sanity-checks current sim state against an
+            # expected predicate. Handle it before translation so the
+            # generic "unknown action_type" path doesn't silently drop it.
+            if step.action_type == 'verify':
+                ok, msg = self._run_verify_step(step.params)
+                if not ok:
+                    print(f"  [scenario] step {step_idx} verify FAILED: {msg}")
+                    result.passed = False
+                    if not result.error_message:
+                        result.error_message = (
+                            f"verify step {step_idx} failed: {msg}"
+                        )
+                    # Stop on a verification failure — same behavior as a
+                    # critical state divergence.
+                    break
+                else:
+                    print(f"  [scenario] step {step_idx} verify ok ({msg})")
+                continue
+
             action = self._translate_scenario_step(step)
             if action is None:
+                skipped_steps += 1
+                print(f"  [scenario] step {step_idx} ({step.action_type}) skipped (no translation)")
                 continue
 
             step_result = self.run_synchronized_step(action)
             result.add_step(step_result)
 
-            # Check expected state if defined
+            # Check expected state if defined.
             if step.expected:
                 verification = self._verify_expected_state(step.expected)
                 if not verification.get('match', True):
-                    print(f"Step {step_result.step}: State mismatch - {verification.get('message', '')}")
+                    print(f"Step {step_result.step}: State mismatch - "
+                          f"{verification.get('message', '')}")
 
-            # Stop on critical failure
+            # Stop on critical failure.
             if step_result.comparison and step_result.comparison.critical_count > 0:
                 print(f"Stopping scenario: Critical discrepancy at step {step_result.step}")
                 break
+
+        if skipped_steps:
+            print(f"  [scenario] {skipped_steps} of {len(scenario.steps)} "
+                  f"steps were skipped (no translation)")
+
+        # 4) Try to return the live game to a known state for the next
+        #    scenario. CommunicationMod has no `abandon` command and no
+        #    ESCAPE key (its key list is CONFIRM/CANCEL/MAP/DECK/…/CARD_N
+        #    only — see CommandExecutor.getKeycode in CommunicationMod.jar),
+        #    so the only way to return to the main menu programmatically
+        #    is `click X Y` on the in-game UI buttons (ESC → Abandon →
+        #    Confirm). That's fragile and out of scope for 9.x.4.
+        #    Strategy: if the player died or the run completed naturally,
+        #    `in_game` will be False after a brief settle period; we wait
+        #    for that. Otherwise we leave the run in place and the next
+        #    scenario invocation will detect `in_game=True` and fail
+        #    cleanly with a clear error message.
+        if self.game:
+            try:
+                self.game.wait_for_state(
+                    lambda s: not s.get('in_game', True),
+                    timeout=2.0,
+                )
+            except Exception:
+                pass
 
         result.finalize()
         self._current_result = None
@@ -406,46 +510,278 @@ class TestRunner:
     def _translate_scenario_step(self, step: ScenarioStep) -> Optional[TranslatedAction]:
         """Translate a scenario step to a TranslatedAction.
 
+        The translator handles every step type produced by ScenarioLoader
+        (both the legacy ``action: "..."`` strings and the newer
+        ``type: ...`` structured form). Any unrecognised step type is
+        logged via the result.errors list and the step is skipped.
+
         Args:
             step: ScenarioStep to translate.
 
         Returns:
-            TranslatedAction or None if translation failed.
+            TranslatedAction or None if translation failed (the caller
+            should record this as a "skipped step" diagnostic).
         """
         params = step.params
+        action_type = step.action_type
 
-        if step.action_type == 'play':
-            # Find card by name in hand
-            card_name = params.get('card', '')
-            target = params.get('target', -1)
-            if self.sim:
-                state = self.sim.get_state()
-                combat = state.get('combat_state', {})
-                for i, card in enumerate(combat.get('hand', [])):
-                    if card_name.lower() in card.get('name', '').lower():
-                        if target >= 0:
-                            return self.translator.from_sim_to_game(f"{i} {target}")
-                        return self.translator.from_sim_to_game(str(i))
+        if action_type == 'play':
+            card_name = str(params.get('card', ''))
+            target = int(params.get('target', -1))
+            card_idx = self._find_card_index_in_hand(card_name)
+            if card_idx is None:
+                # Try the live game's hand as a fallback (handles cases
+                # where the simulator hasn't been driven into combat yet).
+                card_idx = self._find_card_index_in_live_hand(card_name)
+            if card_idx is None:
+                print(f"  [translator] play step skipped: card '{card_name}' "
+                      f"not in either sim or live hand")
+                return None
+            if target >= 0:
+                return self.translator.from_sim_to_game(f"{card_idx} {target}")
+            return self.translator.from_sim_to_game(str(card_idx))
 
-        elif step.action_type == 'end_turn' or step.action_type == 'end':
+        if action_type in ('end_turn', 'end'):
             return self.translator.from_sim_to_game("end")
 
-        elif step.action_type == 'choose':
-            option = params.get('option', 0)
-            return self.translator.from_sim_to_game(str(option))
+        if action_type == 'choose':
+            option = int(params.get('option', 0))
+            return TranslatedAction(
+                action_type=ActionType.CHOOSE_OPTION,
+                game_command=f"choose {option}",
+                sim_command=str(option),
+                params={'option_index': option},
+            )
 
-        elif step.action_type == 'potion':
-            slot = params.get('slot', 0)
-            target = params.get('target', -1)
-            subaction = params.get('subaction', 'use')
-            if subaction == 'use':
+        if action_type == 'map':
+            # CommunicationMod expresses map navigation as a `choose <node>`
+            # while in the map screen. The simulator's map-screen handler
+            # likewise expects a `<idx>` action.
+            node = int(params.get('node', 0))
+            return TranslatedAction(
+                action_type=ActionType.MAP_MOVE,
+                game_command=f"choose {node}",
+                sim_command=str(node),
+                params={'node_index': node},
+            )
+
+        if action_type == 'potion':
+            slot = int(params.get('slot', 0))
+            target = int(params.get('target', -1))
+            subaction = str(params.get('subaction', 'use'))
+            if subaction in ('use', 'drink'):
                 if target >= 0:
                     return self.translator.from_sim_to_game(f"drink {slot} {target}")
                 return self.translator.from_sim_to_game(f"drink {slot}")
-            else:
-                return self.translator.from_sim_to_game(f"discard potion {slot}")
+            return self.translator.from_sim_to_game(f"discard potion {slot}")
 
+        if action_type == 'wait':
+            frames = int(params.get('frames', 1))
+            return TranslatedAction(
+                action_type=ActionType.UNKNOWN,
+                game_command=f"wait {frames}",
+                sim_command="",  # Sim doesn't have a frame concept; no-op.
+                params={'frames': frames},
+            )
+
+        if action_type == 'proceed':
+            return TranslatedAction(
+                action_type=ActionType.UNKNOWN,
+                game_command="proceed",
+                sim_command="",
+                params={},
+            )
+
+        if action_type == 'cancel':
+            return TranslatedAction(
+                action_type=ActionType.UNKNOWN,
+                game_command="cancel",
+                sim_command="",
+                params={},
+            )
+
+        if action_type == 'key':
+            value = str(params.get('value', 'SPACE'))
+            return TranslatedAction(
+                action_type=ActionType.UNKNOWN,
+                game_command=f"key {value}",
+                sim_command="",
+                params={'key': value},
+            )
+
+        if action_type == 'unknown':
+            return None
+
+        # Unrecognised step type — record as diagnostic but don't crash.
+        print(f"  [translator] WARNING: unknown step action_type='{action_type}' "
+              f"params={params!r} — skipping")
         return None
+
+    @staticmethod
+    def _select_card_in_hand(hand: list, card_name: str) -> Optional[int]:
+        """Pick the hand-index for ``card_name`` from a list of card dicts.
+
+        Match priority (case-insensitive):
+          1. Exact name OR exact modid (``id`` field). First exact match wins.
+          2. If no exact match, fall back to substring match — but ONLY if
+             exactly one card in the hand is a substring match. Two or more
+             substring candidates are an ambiguous translation (e.g. "Strike"
+             would otherwise greedily match "Perfected Strike", "Twin Strike",
+             "Strike", "Thunder Strike", …) and the caller should treat it
+             as a translation failure.
+
+        Returns the chosen index, or None if no exact match and the
+        substring fallback is empty or ambiguous.
+        """
+        if not card_name or not hand:
+            return None
+        target = card_name.strip().lower()
+
+        for i, card in enumerate(hand):
+            name = str(card.get('name', '')).lower()
+            cid = str(card.get('id', '')).lower()
+            if name == target or cid == target:
+                return i
+
+        substring_matches = []
+        for i, card in enumerate(hand):
+            name = str(card.get('name', '')).lower()
+            cid = str(card.get('id', '')).lower()
+            if target in name or target in cid:
+                substring_matches.append(i)
+
+        if len(substring_matches) == 1:
+            return substring_matches[0]
+        if len(substring_matches) > 1:
+            ambiguous = [hand[i].get('name') or hand[i].get('id')
+                         for i in substring_matches]
+            print(f"  [translator] WARNING: card '{card_name}' is ambiguous "
+                  f"in hand — matched {len(substring_matches)} cards: "
+                  f"{ambiguous!r}. Refusing to guess; mark scenario step "
+                  f"with the exact card name or modid.")
+        return None
+
+    def _find_card_index_in_hand(self, card_name: str) -> Optional[int]:
+        """Return the simulator-hand index for ``card_name`` using the
+        exact-then-unique-substring policy."""
+        if not self.sim:
+            return None
+        try:
+            state = self.sim.get_state()
+        except Exception:
+            return None
+        return self._select_card_in_hand(
+            state.get('combat_state', {}).get('hand', []) or [],
+            card_name,
+        )
+
+    def _find_card_index_in_live_hand(self, card_name: str) -> Optional[int]:
+        """Return the live-game hand index for ``card_name``. Used as a
+        fallback when the simulator's combat state isn't yet populated."""
+        if not self.game:
+            return None
+        try:
+            hand = self.game.get_hand()
+        except Exception:
+            return None
+        return self._select_card_in_hand(hand or [], card_name)
+
+    def _run_verify_step(self, params: dict) -> Tuple[bool, str]:
+        """Apply a ``type: verify`` scenario step against current sim state.
+
+        Supported checks (driven by ``check`` field in the YAML):
+
+          - ``has_relic``  → params: ``relic`` (name). Pass iff a relic of
+            that name appears in the simulator's relics list.
+          - ``no_relic``   → opposite of ``has_relic``.
+          - ``monster_status`` → params: ``monster`` (idx),
+            ``status`` (lowercased status name), ``value`` (int amount).
+            Pass iff the monster has that status with at least that value.
+          - ``player_status`` → params: ``status`` (lowercased status
+            name), ``value`` (int amount). Pass iff the player has that
+            status with at least that value.
+          - ``hp_at_least`` / ``hp_at_most`` → params: ``value`` (int).
+          - ``floor`` → params: ``value`` (int). Pass iff current floor
+            equals value.
+
+        Unsupported ``check`` values pass with a diagnostic message — they
+        are recorded in the journal but not failed (so a partial
+        implementation does not block scenarios with mixed check coverage).
+        Returns ``(passed, message)``.
+        """
+        if not self.sim:
+            return (True, "no sim — verify skipped")
+        try:
+            state = self.sim.get_state()
+        except Exception as e:
+            return (False, f"could not read sim state: {e!r}")
+
+        check = (params.get('check') or '').lower()
+        if not check:
+            return (False, f"verify step missing 'check' field; params={params!r}")
+
+        if check in ('has_relic', 'no_relic'):
+            relic_name = (params.get('relic') or '').lower()
+            relics = state.get('relics') or []
+            present = any(
+                str(r.get('name', '')).lower() == relic_name
+                or str(r.get('id', '')).lower() == relic_name
+                for r in relics
+            )
+            if check == 'has_relic':
+                return (present, f"has_relic '{relic_name}' "
+                                 f"({'present' if present else 'absent'})")
+            return (not present, f"no_relic '{relic_name}' "
+                                 f"({'absent' if not present else 'present'})")
+
+        if check == 'monster_status':
+            mon_idx = int(params.get('monster', 0))
+            status_name = (params.get('status') or '').lower()
+            min_value = int(params.get('value', 1))
+            monsters = (state.get('combat_state') or {}).get('monsters') or []
+            if not (0 <= mon_idx < len(monsters)):
+                return (False, f"monster index {mon_idx} out of range "
+                               f"(have {len(monsters)} monsters)")
+            powers = monsters[mon_idx].get('powers') or []
+            for p in powers:
+                if str(p.get('name', '')).lower() == status_name \
+                        or str(p.get('id', '')).lower() == status_name:
+                    if int(p.get('amount', 0)) >= min_value:
+                        return (True, f"monster[{mon_idx}].{status_name} "
+                                      f"={p.get('amount')} (>= {min_value})")
+                    return (False, f"monster[{mon_idx}].{status_name} "
+                                   f"={p.get('amount')} (< {min_value})")
+            return (False, f"monster[{mon_idx}] has no '{status_name}' status")
+
+        if check == 'player_status':
+            status_name = (params.get('status') or '').lower()
+            min_value = int(params.get('value', 1))
+            powers = (state.get('combat_state') or {}).get('player', {}).get('powers') or []
+            for p in powers:
+                if str(p.get('name', '')).lower() == status_name \
+                        or str(p.get('id', '')).lower() == status_name:
+                    if int(p.get('amount', 0)) >= min_value:
+                        return (True, f"player.{status_name}="
+                                      f"{p.get('amount')} (>= {min_value})")
+                    return (False, f"player.{status_name}="
+                                   f"{p.get('amount')} (< {min_value})")
+            return (False, f"player has no '{status_name}' status")
+
+        if check in ('hp_at_least', 'hp_at_most'):
+            cur = int(state.get('cur_hp', 0))
+            value = int(params.get('value', 0))
+            if check == 'hp_at_least':
+                return (cur >= value, f"hp={cur} (need >= {value})")
+            return (cur <= value, f"hp={cur} (need <= {value})")
+
+        if check == 'floor':
+            cur = int(state.get('floor_num', state.get('floor', 0)))
+            value = int(params.get('value', 0))
+            return (cur == value, f"floor={cur} (expected {value})")
+
+        # Unknown check — don't fail the scenario; surface diagnostic.
+        return (True, f"verify check='{check}' not yet implemented "
+                      f"(params={params!r})")
 
     def _verify_expected_state(self, expected_state) -> dict:
         """Verify current state against expected state.

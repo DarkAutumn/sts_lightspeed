@@ -321,6 +321,194 @@ class GameController:
         """Send 'end' command to end current turn."""
         self.send_command("end")
 
+    def start_game(self, character: str, ascension: int = 0,
+                   seed: Optional[int] = None,
+                   timeout: float = 10.0) -> Dict[str, Any]:
+        """Start a new run on the live game.
+
+        CommunicationMod's `start <className> <ascensionLevel> [seed]`
+        command leaves the game in the Neow event with available_commands
+        of `[choose, key, click, wait, state]`.
+
+        Args:
+            character: Character class name as accepted by CommunicationMod
+                       (IRONCLAD, SILENT, DEFECT, WATCHER).
+            ascension: Ascension level (0-20).
+            seed: Optional integer seed. If provided, sent as a positional
+                  argument; CommunicationMod's SeedHelper interprets the
+                  string however it interprets it. Pass `None` to let the
+                  game pick a fresh random seed.
+            timeout: Seconds to wait for the live game to confirm it's in
+                     the new run.
+
+        Returns:
+            The first game-state dictionary observed after the start command
+            takes effect (room_phase=EVENT, screen_name=NONE, floor=0).
+
+        Raises:
+            CommunicationModError: If the game does not enter a run within
+                                   `timeout` seconds.
+        """
+        if not self._connected:
+            raise CommunicationModError("Not connected to CommunicationMod bridge")
+
+        char = character.upper().strip()
+        cmd = f"start {char} {int(ascension)}"
+        if seed is not None:
+            cmd += f" {int(seed)}"
+
+        # CommunicationMod's `start` is only valid at the main menu — when
+        # in-game it is rejected (`Invalid command: start. Possible commands:
+        # [...]`). And there's no programmatic abandon (no `abandon`
+        # command, no ESCAPE key — see CommandExecutor.getKeycode in
+        # CommunicationMod.jar). So we have three cases:
+        #
+        #   A) Live game is at the main menu (in_game=False). Send `start`.
+        #   B) Live game is at a brand-new Neow event (floor 0, EVENT,
+        #      Talk-only options). Adopt the existing run as if we'd
+        #      started it ourselves. This is the auto-recovery path that
+        #      kicks in if the harness crashed mid-`start_game` or if the
+        #      previous scenario invocation aborted between `start` and
+        #      its first step.
+        #   C) Anything else (in_game=True, NOT a fresh Neow). Refuse loudly
+        #      so we never silently divert into a half-run state.
+        try:
+            current = self.get_state()
+        except Exception:
+            current = {}
+
+        if current.get('in_game') is True:
+            gs = current.get('game_state') or {}
+            ss = gs.get('screen_state') or {}
+            event_id = (ss.get('event_id') or '').lower()
+            ss_screen_name = (ss.get('screen_name') or '').lower()
+
+            # Predicate: BRAND-NEW Neow event, never interacted with.
+            #
+            #   - At floor 0 in an EVENT room.
+            #   - The event is Neow (event_id starts with "neow").
+            #   - The Neow event has not yet entered its bonus-pick or
+            #     card-pick sub-screens (those report ss['screen_name']
+            #     of "card_reward" / "boss_reward" / etc., or transition
+            #     to a screen_name other than "EVENT").
+            #   - Character matches the requested character.
+            #   - Ascension matches the requested ascension.
+            #
+            # All five must hold; otherwise we'd be adopting a run whose
+            # state has already diverged from the (character, ascension,
+            # seed) the simulator is about to be initialised with.
+            requested_char_upper = (character or '').upper()
+            live_char_upper = (gs.get('class') or gs.get('character')
+                               or '').upper()
+            live_asc = gs.get('ascension_level',
+                              gs.get('ascension', None))
+
+            is_fresh_neow = (
+                gs.get('floor') == 0
+                and gs.get('room_phase') == 'EVENT'
+                and event_id.startswith('neow')
+                and ss_screen_name in ('', 'event', 'none')
+                and (not requested_char_upper
+                     or not live_char_upper
+                     or live_char_upper == requested_char_upper)
+                and (live_asc is None or int(live_asc) == int(ascension))
+            )
+            if is_fresh_neow:
+                print(f"  [start_game] live game already at fresh Neow event "
+                      f"(seed={gs.get('seed')!r}, char={live_char_upper}, "
+                      f"asc={live_asc}); adopting existing run "
+                      f"instead of sending `{cmd}`")
+                # Flatten and return current state — caller will read the
+                # seed from it and seed the simulator the same way as if
+                # we had just started the run.
+                flat = current.copy()
+                flat.update(gs)
+                self._last_state = flat
+                return flat
+            raise CommunicationModError(
+                f"Cannot send `start`: live game is in a run "
+                f"(in_game=True, floor={gs.get('floor')}, "
+                f"room_phase={gs.get('room_phase')}, "
+                f"event_id={event_id!r}, char={live_char_upper!r}, "
+                f"asc={live_asc!r}, requested char={requested_char_upper!r}, "
+                f"requested asc={ascension!r}). CommunicationMod has no "
+                f"programmatic `abandon` command and no ESCAPE key, so the "
+                f"harness will not blindly send `start` (which would error "
+                f"and leave the run in place). Please return to the main "
+                f"menu (ESC → Abandon Run → Confirm) and retry."
+            )
+
+        if 'start' not in (current.get('available_commands') or []):
+            raise CommunicationModError(
+                f"Cannot send `start`: it is not in the live game's "
+                f"available_commands "
+                f"({current.get('available_commands')!r}). Please "
+                f"return to the main menu and retry."
+            )
+
+        # Mark the previous mtime so we can detect a real state update
+        # rather than just the bridge re-touching the file.
+        try:
+            old_mtime = self.state_file.stat().st_mtime
+        except FileNotFoundError:
+            old_mtime = 0
+
+        self.send_command(cmd)
+
+        # Wait until the game reports it's in a run AND has produced a new
+        # state-file write, OR until we time out.
+        start_time = time.time()
+        last_state: Dict[str, Any] = {}
+        while time.time() - start_time < timeout:
+            try:
+                new_mtime = self.state_file.stat().st_mtime
+                if new_mtime > old_mtime:
+                    with open(self.state_file, 'r') as f:
+                        last_state = json.load(f)
+                    if last_state.get('in_game') and last_state.get('game_state'):
+                        gs = last_state['game_state']
+                        # Flatten for caller convenience.
+                        flat = last_state.copy()
+                        flat.update(gs)
+                        self._last_state = flat
+                        return flat
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            time.sleep(0.05)
+
+        raise CommunicationModError(
+            f"Game did not enter a run within {timeout}s after `{cmd}`. "
+            f"Last observed state keys: {list(last_state.keys())}"
+        )
+
+    def wait_for_state(self, predicate, timeout: float = 5.0,
+                       poll_interval: float = 0.05) -> Optional[Dict[str, Any]]:
+        """Poll the bridge state file until `predicate(state)` is true.
+
+        Args:
+            predicate: Callable that takes a flattened state dict and
+                       returns True when the wait condition is satisfied.
+            timeout:   Maximum seconds to wait.
+            poll_interval: How often to re-read the state file.
+
+        Returns:
+            The first state dict for which the predicate was true, or
+            None if the timeout expired.
+        """
+        if not self._connected:
+            raise CommunicationModError("Not connected to CommunicationMod bridge")
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                state = self.get_state()
+                if predicate(state):
+                    return state
+            except CommunicationModError:
+                pass
+            time.sleep(poll_interval)
+        return None
+
     def choose_option(self, option_index: int):
         """Send choice command for events/rewards.
 

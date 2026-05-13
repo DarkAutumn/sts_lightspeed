@@ -66,7 +66,7 @@ class SimulatorController:
         if char_class is None:
             raise ValueError(f"Unknown character: {character}")
 
-        self.simulator.setup_game(seed, char_class, ascension)
+        self.simulator.setup_game(seed & 0xFFFFFFFFFFFFFFFF, char_class, ascension)
         self._gc = self.simulator.gc
         self._initialized = True
 

@@ -6,6 +6,104 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 9.x.4 — Sync-harness translator + sim-driver fix
+
+Fixes the long-standing "all scenarios pass with `Steps: 0`" no-op
+problem in `integration/run_tests.py`. The harness now actually
+drives the live game from main menu through Neow → map → combat in
+lockstep with the in-process simulator, and surfaces real
+divergences for the comparator to flag.
+
+Discovered that the prior "Phase 1.5 baseline" pass was a false
+positive: every Ironclad scenario reported `Steps: 0` because the
+scenario loader silently produced `('unknown', {})` steps for the
+new YAML schema and the translator returned `None` for any step
+type other than `play`/`end`/`choose`/`potion`. Documented at
+length in `docs/KNOWN_ISSUES.md`.
+
+#### Fixed
+- **`tests/integration/harness/scenario_loader.py`** —
+  `ScenarioStep.from_dict` now accepts BOTH the legacy
+  `action: "..."` string format AND the structured `type: ...`
+  schema. Added `_parse_typed_step` covering choose / play /
+  end_turn / potion / map / event / shop / reward / rest /
+  treasure / card_select / boss_reward / proceed / cancel /
+  wait / key.
+- **`integration/run_tests.py`** — rewrote
+  `_translate_scenario_step` to handle every scenario step type,
+  with `_find_card_index_in_hand` and `_find_card_index_in_live_hand`
+  helpers that match cards by both display name AND
+  CommunicationMod modid (case-insensitive substring). Rewrote
+  `run_scenario` to:
+  1. Send `start CHAR ASC SEED` to the live game.
+  2. Read the live game's actual seed from its state.
+  3. Initialise the simulator with that seed (sign-extended).
+  4. Walk scenario steps in lockstep, logging skipped steps.
+- **`integration/harness/game_controller.py`** — added
+  `start_game(character, ascension, seed, timeout)` that
+  refuses-fast if the game is in an unrecognised state, but
+  AUTO-ADOPTS an existing in-progress run if it's at a fresh Neow
+  event (floor 0, EVENT, event_id starts with "neow"). Added
+  `wait_for_state(predicate, timeout, poll_interval)`.
+- **`integration/harness/simulator_controller.py`** — masked the
+  seed with `& 0xFFFFFFFFFFFFFFFF` before passing it to
+  `setup_game`, since pybind11's `std::uint64_t` converter rejects
+  the live game's signed-int64 representation.
+- **`integration/harness/state_comparator.py`** — added
+  `_normalise_seed` so signed-int64 and uint64 representations of
+  the same seed compare equal. Downgraded `screen_state` format
+  mismatches from CRITICAL to MAJOR (live game returns rich event
+  dict, simulator returns coarse string — apples-and-oranges, not
+  a real divergence).
+
+#### Added
+- **`tests/python/test_sync_harness_translator.py`** — 14 offline
+  pytest cases covering both YAML schemas and every
+  step-type-to-TranslatedAction translation. Guards the Phase
+  9.x.4 fix from regressing without requiring a live
+  CommunicationMod bridge.
+
+#### Documented
+- **`docs/KNOWN_ISSUES.md`** — new "Sync-harness divergences"
+  section: ISSUE-100 (deck-card cost reports -1 outside combat),
+  ISSUE-101 (screen_state format mismatch), ISSUE-102 (Neow
+  card-pick desync between live and sim), ISSUE-103 (potion-slot
+  count convention).
+
+#### Verified
+- Smoke-test against live Steam StS (Java 8 + native Linux JRE
+  shadow-launch): `basic_combat.yaml` advances through Neow Talk
+  → Neow card-pick before hitting the genuine ISSUE-102
+  divergence.
+- 20/20 offline pytest cases green.
+- Full `tests/python/` suite green: 31 passed, 1 skipped.
+
+#### Review-fixes (GPT-5.5 rubber-duck pass)
+- **Fail loud on `start_game` failure** when connected to a live
+  game. Previously a swallowed exception silently degraded to
+  sim-only mode and let the scenario report PASSED with no live
+  comparison — the very bug this harness exists to catch.
+- **Stricter Neow-adoption predicate** in `start_game`: also
+  requires character match, ascension match, and that the Neow
+  event hasn't entered a sub-screen (no `screen_name="card_reward"`
+  etc.). Previous predicate could adopt a previous run with
+  wrong character/ascension or partial-Neow-progress.
+- **Card-name disambiguation** in `_select_card_in_hand` (new
+  helper extracted from the two `_find_card_index_in_*` methods):
+  exact-name-or-modid match wins; substring fallback only fires
+  when exactly one match exists. Refuses ambiguity (e.g. "Strike"
+  in a hand also containing "Perfected Strike" / "Twin Strike")
+  and prints a diagnostic.
+- **`type: verify` step support.** Pre-existing `verify` steps in
+  `status_effects.yaml` and `relic_integration.yaml` were silently
+  dropped by the old translator and would have continued to be
+  dropped by the new one. Now `run_scenario` handles them inline
+  via a new `_run_verify_step` covering `has_relic` / `no_relic` /
+  `monster_status` / `player_status` / `hp_at_least` / `hp_at_most`
+  / `floor`. Unsupported `check` values pass with a diagnostic
+  rather than failing scenarios that mix supported + unsupported
+  checks.
+
 ### Phase 8 — Legality bindings for the Gym wrapper
 
 Adds three thin engine-legality bindings that the slaythespire-rl

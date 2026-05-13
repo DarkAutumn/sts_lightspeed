@@ -25,6 +25,18 @@ class ScenarioStep:
     def from_dict(cls, data: dict, step_num: int) -> 'ScenarioStep':
         """Create ScenarioStep from dictionary.
 
+        Two YAML schemas are supported:
+
+        Old format (single action string):
+            - action: "play Strike 0"
+              description: "..."
+
+        New format (typed structured fields):
+            - type: play
+              card: "Strike"
+              target: 0
+              description: "..."
+
         Args:
             data: Dictionary with step data.
             step_num: Step number.
@@ -32,22 +44,107 @@ class ScenarioStep:
         Returns:
             ScenarioStep instance.
         """
-        # Parse action
-        action = data.get('action', '')
-        action_type, params = cls._parse_action(action)
-
-        # Parse expected state
+        # Parse expected state once (shared by both schemas).
         expected = None
         if 'expected' in data:
             manager = ExpectedStateManager()
             expected = manager._parse_expected_state(step_num, data['expected'])
 
+        # Schema A: legacy "action: ..." string.
+        if 'action' in data and data.get('action'):
+            action_type, params = cls._parse_action(data['action'])
+            return cls(
+                action_type=action_type,
+                params=params,
+                expected=expected,
+                description=data.get('description', ''),
+            )
+
+        # Schema B: new "type: ..." structured form.
+        action_type, params = cls._parse_typed_step(data)
         return cls(
             action_type=action_type,
             params=params,
             expected=expected,
-            description=data.get('description', '')
+            description=data.get('description', ''),
         )
+
+    @staticmethod
+    def _parse_typed_step(data: dict) -> tuple:
+        """Parse a structured step dict (Schema B) into (action_type, params).
+
+        Recognised step types and their fields:
+          - choose:        option: <int>
+          - play:          card: <name>, target: <int> (optional)
+          - end_turn/end:  (no fields)
+          - potion:        subaction: use|discard, slot: <int>, target: <int>
+          - map:           node: <int>            (a map-node choice; CommunicationMod
+                                                    handles map navigation as a `choose`)
+          - event:         option: <int>          (alias for choose during events)
+          - shop:          option: <int>          (alias for choose during shopping)
+          - reward:        option: <int>          (alias for choose during card/relic rewards)
+          - rest:          option: <int>          (alias for choose at rest sites)
+          - treasure:      option: <int>          (alias for choose at treasure rooms)
+          - card_select:   option: <int>          (alias for choose during card_select screens)
+          - boss_reward:   option: <int>          (alias for choose at boss-relic rewards)
+          - proceed:       (no fields)            (close screen / advance after rewards)
+          - cancel:        (no fields)            (back-out of a screen)
+          - wait:          frames: <int> (default 1)
+          - key:           value: <key-name>      (e.g. SPACE, ESCAPE)
+          - unknown:       (any unrecognised type — preserved verbatim for diagnostics)
+        """
+        raw_type = (data.get('type') or 'unknown').lower()
+        params = {}
+
+        # Bag every non-meta field from the YAML into params, so that even
+        # unrecognised types preserve their data for downstream tools and
+        # diagnostics. The translator can then look at params directly.
+        meta_keys = {'type', 'description', 'expected'}
+        for key, value in data.items():
+            if key in meta_keys:
+                continue
+            params[key] = value
+
+        # Normalise some aliases.
+        if raw_type in ('end_turn', 'end'):
+            return ('end_turn', {})
+        if raw_type in ('event', 'shop', 'reward', 'rest', 'treasure',
+                        'card_select', 'boss_reward'):
+            # All of these map to a `choose <option>` on both sides; carry
+            # the `option` field through.
+            opt = params.get('option', 0)
+            return ('choose', {'option': int(opt)})
+        if raw_type == 'choose':
+            opt = params.get('option', 0)
+            return ('choose', {'option': int(opt)})
+        if raw_type == 'map':
+            # `node: N` for legibility; CommunicationMod handles map nodes as
+            # a `choose <node>` command.
+            node = params.get('node', params.get('option', 0))
+            return ('map', {'node': int(node)})
+        if raw_type == 'play':
+            return ('play', {
+                'card': params.get('card', ''),
+                'target': int(params.get('target', -1)),
+            })
+        if raw_type == 'potion':
+            return ('potion', {
+                'subaction': params.get('subaction', 'use'),
+                'slot': int(params.get('slot', 0)),
+                'target': int(params.get('target', -1)),
+            })
+        if raw_type == 'wait':
+            return ('wait', {'frames': int(params.get('frames', 1))})
+        if raw_type == 'proceed':
+            return ('proceed', {})
+        if raw_type == 'cancel':
+            return ('cancel', {})
+        if raw_type == 'key':
+            return ('key', {'value': str(params.get('value', 'SPACE'))})
+
+        # Pass through whatever the YAML said; downstream translator decides
+        # what to do (or logs an "unsupported step" diagnostic).
+        return (raw_type, params)
 
     @staticmethod
     def _parse_action(action_str: str) -> tuple:

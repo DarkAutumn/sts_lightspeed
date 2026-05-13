@@ -290,12 +290,58 @@ class StateComparator:
         sim_state: Dict[str, Any],
         prefix: str
     ) -> List[Discrepancy]:
-        """Compare top-level fields between states."""
+        """Compare top-level fields between states.
+
+        Special-cases:
+        - `seed`: normalised to signed-int64 before comparing, since the
+          live game reports a signed int while the simulator's pybind11
+          binding hands back the unsigned representation. Only flags a
+          discrepancy when the int64 values differ.
+        - `screen_state`: live game shows rich event/screen detail dicts
+          while the simulator reports a coarse screen-name string. Apples
+          and oranges; we downgrade this to MAJOR (not CRITICAL) so it
+          does not abort the scenario, and rely on per-screen comparators
+          (combat, deck, monsters, …) to do the real verification.
+        """
         discrepancies = []
 
         for field in self.EXACT_FIELDS:
             game_val = game_state.get(field)
             sim_val = sim_state.get(field)
+
+            if field == 'seed':
+                game_norm = self._normalise_seed(game_val)
+                sim_norm = self._normalise_seed(sim_val)
+                if game_norm == sim_norm:
+                    continue
+                field_path = f"{prefix}.{field}" if prefix else field
+                discrepancies.append(Discrepancy(
+                    field=field_path,
+                    game_value=game_val,
+                    sim_value=sim_val,
+                    severity=DiscrepancySeverity.CRITICAL,
+                    message=(f"{field_path} mismatch (int64-normalised): "
+                             f"game={game_norm}, sim={sim_norm}")
+                ))
+                continue
+
+            if field == 'screen_state':
+                if game_val == sim_val:
+                    continue
+                # Live game's screen_state is a dict with rich event detail;
+                # sim's is a coarse string name. Downgrade to MAJOR so we
+                # don't abort scenarios on format-only divergence; rely on
+                # the per-screen comparators (combat, deck, monsters, …)
+                # to flag real bugs.
+                field_path = f"{prefix}.{field}" if prefix else field
+                discrepancies.append(Discrepancy(
+                    field=field_path,
+                    game_value=game_val,
+                    sim_value=sim_val,
+                    severity=DiscrepancySeverity.MAJOR,
+                    message=f"{field_path} format mismatch: game={game_val}, sim={sim_val}"
+                ))
+                continue
 
             if game_val != sim_val:
                 field_path = f"{prefix}.{field}" if prefix else field
@@ -324,6 +370,26 @@ class StateComparator:
                     ))
 
         return discrepancies
+
+    @staticmethod
+    def _normalise_seed(value):
+        """Coerce a seed value (int / str / float / None) into a signed
+        int64 for comparison. Unsigned 64-bit values that exceed
+        2^63 - 1 wrap to their two's-complement signed equivalent."""
+        if value is None:
+            return None
+        try:
+            iv = int(value)
+        except (TypeError, ValueError):
+            try:
+                iv = int(float(value))
+            except (TypeError, ValueError):
+                return value
+        # Mask to 64 bits then sign-extend.
+        iv &= 0xFFFFFFFFFFFFFFFF
+        if iv >= (1 << 63):
+            iv -= (1 << 64)
+        return iv
 
     def _compare_combat_states(
         self,
