@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Phase 10 — BoxedCoffee RNG parity cherry-picks (partial)
+
+Two of 21 BoxedCoffee commits cleanly cherry-picked. The remaining 19
+conflict against our ben-w-smith base and require the (currently
+gated) live-game sync harness to validate before merging. Deferred to
+Phase 10.b.
+
+#### Fixed
+- **Anger duplicate preserves combat cost** (cherry-pick `737627e`)
+  — `BattleContext::useAttackCard` ANGER branch now passes the
+  existing `CardInstance c` to `MakeTempCardInDiscard` instead of
+  constructing a fresh default-cost `CardInstance(CardId::ANGER, up)`.
+  Fixes duplicates losing temporary cost modifications (Mummified
+  Hand, Madness, etc.).
+- **Distilled Chaos autoplay order** (cherry-pick `5146225`) —
+  `playTopCardInDrawPile` now appends auto-played cards to the
+  bottom of the card queue (`addToBotCard`) instead of the top
+  (`addToTopCard`), matching live-game resolution order.
+
+### Phase 12 — Stress + sanitizers + thread safety
+
+New multi-character multithreaded stress driver designed to be run
+under TSan, ASan, and UBSan. Validates the free-threaded surface
+end-to-end with per-task fingerprint comparison between serial and
+parallel runs.
+
+#### Added
+- **`apps/stress_test.cpp`** — multi-character MT playout driver.
+  Fingerprints capture `outcome`, `floor_num`, `deck_size`, `cur_hp`,
+  `max_hp`, `gold`, `act`, and all four post-run RNG counters
+  (card/monster/shuffle/treasure). Defaults to IRONCLAD-only;
+  `STRESS_ALL_CHARS=1` opts into all four characters.
+  Args: `stress_test [threads=8] [per_char=64] [start_seed=1]`.
+- **`stress_test` CMake target** linking `Threads::Threads`.
+- **ISSUE-110 in `docs/KNOWN_ISSUES.md`** — pre-existing
+  `ScumSearchAgent2`/`BattleScumSearcher2` SEGVs on Silent and
+  Watcher seeds. Does NOT affect the RL combat env (which drives
+  `BattleContext` directly).
+- **`.gitignore`** entries for `build_tsan/`, `build_asan/`.
+
+#### Verified (under sanitizers)
+- TSan: `unit_tests` (1275 assertions, 0 failures);
+  `apps/test agent_mt 8 5 0 1 1000 0` (0 races);
+  `stress_test 8 1000 1` (0 races).
+- ASan + UBSan: `unit_tests` (1275/0);
+  `stress_test 8 200 1` (0 errors).
+
+#### Globals audit (plan 12.4)
+- All mutable globals are either `thread_local`
+  (`g_debug_bc`, `g_debug_scum_search`, `simulationIdx`,
+  `BattleContext::sum`) or use a Meyers function-local-static
+  singleton with C++11 thread-safe init (`SimHelpers::getInstance`).
+- No unsynchronized lazy-init paths remain in the engine.
+  `NNInterface::theInstance` (mentioned in plan) does not exist.
+
+### Phase 9.x.4 follow-up — ISSUE-100 fix
+
+#### Fixed
+- **`Card.cost` Python binding** — the value-type `sts::Card` now
+  exposes a `cost` `def_property_readonly` on its pybind11 class
+  that delegates to the engine's `sts::getEnergyCost(id, upgraded)`
+  static lookup. Pre-fix, the binding exposed `cost` only on
+  `CardInstance` (combat-time mutable); the harness's
+  `hasattr(card, 'cost')` fallback returned `-1` for every deck
+  card outside combat, generating a MAJOR cost mismatch per card
+  per scenario. The lambda captures nothing and only reads function
+  args, so it is trivially thread-safe under `mod_gil_not_used()`.
+- **Sync-harness `_get_deck_state`** drops the now-unnecessary
+  `hasattr` fallback in `integration/harness/simulator_controller.py`.
+- **Mark ISSUE-100 RESOLVED** in `docs/KNOWN_ISSUES.md`.
+
+#### Added
+- **C++ unit test** `test_card_base_cost_matches_static_table` —
+  pins BASH=2, STRIKE_RED=1, DEFEND_RED=1, SURVIVOR=1, ZAP=1,
+  DUALCAST=1, and asserts no starter-deck card returns `-1` across
+  all four characters at seed `0x600D5EED`.
+- **Python regression tests** `tests/python/test_card_cost.py` —
+  8 tests covering attribute existence, no-stub-value sentinel,
+  IRONCLAD pinned starter costs, and that BASH+/STRIKE+ keep their
+  base cost.
+
 ### Phase 9.x.5 — `BattleContext::chooseNightmareCard` engine impl
 
 Resolves the Phase 8 known limitation: NIGHTMARE (Silent power, cost 3,
