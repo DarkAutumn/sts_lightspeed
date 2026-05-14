@@ -61,7 +61,8 @@ int Player::getStatusRuntime(PlayerStatus s) const {
             return strength;
         default:
             if (hasStatusRuntime(s)) {
-                return statusMap.at(s);
+                auto it = statusMap.find(s);
+                return it == statusMap.end() ? 0 : it->second;
             } else {
                 return 0;
             }
@@ -155,12 +156,10 @@ void Player::evokeOrb(BattleContext &bc) {
     orbData[orbSlots - 1] = 0;
     ++emptyOrbCount;
 
-    // Determine evoke count (AMPLIFY makes orb evoke twice)
-    int evokeCount = 1;
-    if (hasStatus<PS::AMPLIFY>()) {
-        evokeCount += getStatus<PS::AMPLIFY>();
-        decrementStatus<PS::AMPLIFY>(evokeCount - 1);
-    }
+    // Determine evoke count. Note: AMPLIFY power in Java duplicates POWER
+    // cards via AmplifyPower::onUseCard; it has NOTHING to do with orb
+    // evokes. The previous block here was a misuse.
+    const int evokeCount = 1;
 
     // Trigger evoke effect
     int focus = getStatus<PS::FOCUS>();
@@ -444,6 +443,11 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
         switch (pair.first) {
             case PS::BURST:
                 bc.addToBot(Actions::RemoveStatus<PS::BURST>());
+                break;
+
+            case PS::AMPLIFY:
+                // Java AmplifyPower::atEndOfTurn: removes itself.
+                bc.addToBot(Actions::RemoveStatus<PS::AMPLIFY>());
                 break;
 
             case PS::COMBUST:

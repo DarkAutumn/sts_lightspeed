@@ -205,11 +205,25 @@ namespace sts {
                 strength -= amount;     // strength should not be used by "hasStatusInternal"
                 break;
 
-            default:
-                statusMap.at(s) -= amount;
-                if (!statusMap.at(s)) {
+            default: {
+                // Defensive: avoid map::at throwing when hasStatus bit and statusMap drift.
+                // (Some statuses such as BARRICADE/CORRUPTION/SURROUNDED/PEN_NIB are "flag-only"
+                // and never populate statusMap; reaching this branch for them is harmless.)
+                if (!hasStatus<s>()) {
+                    return;
+                }
+                auto it = statusMap.find(s);
+                if (it == statusMap.end()) {
+                    // Bit set but map entry missing: clear the bit and bail.
+                    setHasStatus<s>(false);
+                    return;
+                }
+                it->second -= amount;
+                if (it->second <= 0) {
                     setHasStatus<s>(false);
                 }
+                break;
+            }
         }
     }
 
@@ -230,11 +244,15 @@ namespace sts {
                 return artifact;
             case PS::DEXTERITY:
                 return dexterity;
+            case PS::FOCUS:
+                return focus;
             case PS::STRENGTH:
                 return strength;
             default:
                 if (hasStatus<s>()) {
-                    return statusMap.at(s);
+                    // Defensive: avoid map::at throwing when bit/map drift.
+                    auto it = statusMap.find(s);
+                    return it == statusMap.end() ? 0 : it->second;
                 } else {
                     return 0;
                 }

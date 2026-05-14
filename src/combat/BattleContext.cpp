@@ -1593,9 +1593,14 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::HYPERBEAM: {
+            // Java: cards/blue/Hyperbeam.java
+            //   damage 26 (+8 = 34), magicNumber=3 (no upgrade for magic).
+            //   Applies FocusPower(p, -magicNumber) -> player loses 3 Focus.
+            //   Engine quirk: debuff<FOCUS>(amount) does focus += amount, so a
+            //   Java "lose 3 focus" maps to DebuffPlayer<FOCUS>(-3).
             const int dmg = calculateCardDamage(c, -1, up ? 34 : 26);
             addToBot( Actions::AttackAllEnemy(dmg) );
-            addToBot( Actions::DebuffPlayer<PS::FOCUS>(3) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(-3) );
             break;
         }
 
@@ -2848,9 +2853,14 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::REPROGRAM: {
+            // Java: cards/blue/Reprogram.java
+            //   magicNumber=1 (+1 = 2). FocusPower(p, -magicNumber), then
+            //   StrengthPower(+magicNumber), DexterityPower(+magicNumber).
+            //   Engine: debuff<FOCUS>(amount) does focus += amount; pass a
+            //   negative value to actually decrement focus.
             addToBot( Actions::BuffPlayer<PS::STRENGTH>(up ? 2 : 1) );
             addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 2 : 1) );
-            addToBot( Actions::DebuffPlayer<PS::FOCUS>(up ? 2 : 1, false) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(up ? -2 : -1, false) );
             break;
         }
 
@@ -3804,6 +3814,14 @@ void BattleContext::onUsePowerCard() {
     if (!item.purgeOnUse && p.hasStatus<PS::DUPLICATION>()) {
         queuePurgeCard(c, item.target);
         p.decrementStatus<PS::DUPLICATION>();
+    }
+
+    // Java AmplifyPower::onUseCard: while AMPLIFY > 0, duplicate the next
+    // POWER card played this turn (does NOT trigger on amplify itself
+    // via the justApplied check in Java; we approximate via the queue).
+    if (!item.purgeOnUse && p.hasStatus<PS::AMPLIFY>()) {
+        queuePurgeCard(c, item.target);
+        p.decrementStatus<PS::AMPLIFY>(1);
     }
 
     const auto echoForm = p.getStatus<PS::ECHO_FORM>();
