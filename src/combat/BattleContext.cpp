@@ -1962,15 +1962,29 @@ void BattleContext::useAttackCard() {
         case CardId::COMPILE_DRIVER: {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Draw 1 for each unique orb type (simplified for now)
-            addToBot( Actions::DrawCards(1) );
+            // Java: cards/blue/CompileDriver.java + actions/defect/CompileDriverAction.java
+            //   Draw 1 card per UNIQUE non-empty orb type in slots.
+            bool seen[5] = {false, false, false, false, false};
+            int unique = 0;
+            for (int i = 0; i < player.orbSlots; ++i) {
+                const auto o = player.orbs[i];
+                const int idx = static_cast<int>(o);
+                if (o == Orb::EMPTY || idx < 0 || idx >= 5) continue;
+                if (!seen[idx]) {
+                    seen[idx] = true;
+                    ++unique;
+                }
+            }
+            if (unique > 0) {
+                addToBot( Actions::DrawCards(unique) );
+            }
             break;
         }
 
         case CardId::SMITE: {
-            const int dmg = calculateCardDamage(c, t, up ? 9 : 6);
+            // Java: cards/tempCards/Smite.java — 12/16 damage; retain+exhaust handled in Cards.h
+            const int dmg = calculateCardDamage(c, t, up ? 16 : 12);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Exhausts when played (ethereal behavior)
             break;
         }
 
@@ -1984,9 +1998,9 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::THROUGH_VIOLENCE: {
-            const int dmg = calculateCardDamage(c, t, up ? 25 : 20);
+            // Java: cards/tempCards/ThroughViolence.java — 20/30 damage; retain+exhaust handled in Cards.h
+            const int dmg = calculateCardDamage(c, t, up ? 30 : 20);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Exhausts when played (ethereal behavior)
             break;
         }
 

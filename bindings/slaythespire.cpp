@@ -1297,6 +1297,18 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("max_hp", &sts::Player::maxHp)
         .def_readwrite("block", &sts::Player::block)
         .def_readwrite("energy", &sts::Player::energy)
+        .def_readwrite("orb_slots", &sts::Player::orbSlots)
+        .def_property("orbs",
+            [](const sts::Player &p) {
+                std::vector<Orb> ret;
+                for (int i = 0; i < p.orbSlots; ++i) ret.push_back(p.orbs[i]);
+                return ret;
+            },
+            [](sts::Player &p, const std::vector<Orb> &v) {
+                int n = std::min<int>(v.size(), 10);
+                for (int i = 0; i < n; ++i) p.orbs[i] = v[i];
+                for (int i = n; i < 10; ++i) p.orbs[i] = Orb::EMPTY;
+            })
         .def("has_status", &sts::Player::hasStatusRuntime,
              "Check whether the player has a given PlayerStatus (any value > 0).")
         .def("get_status", &sts::Player::getStatusRuntime,
