@@ -958,6 +958,17 @@ void BattleContext::useNoTriggerCard() {
             player.debuff<PS::FRAIL>(1, true);
             break;
 
+        case CardId::PRIDE: {
+            // Java ref: cards/curses/Pride.java triggerOnEndOfTurnForPlayingCard()
+            //   addToBot(new MakeTempCardInDrawPileAction(makeStatEquivalentCopy(), 1, false, true));
+            // Adds one copy of PRIDE to the draw pile at the end of the
+            // owner's turn. PRIDE itself remains in hand (this trigger
+            // is on EOT-for-playing, separate from the regular
+            // discard/exhaust pass that happens later).
+            addToBot(Actions::MakeTempCardInDrawPile(CardInstance(CardId::PRIDE), 1, /*shuffleInto=*/true));
+            break;
+        }
+
 
         default:
             // this can actually be called on any card now because of time warp power
@@ -3964,7 +3975,8 @@ void BattleContext::callEndOfTurnActions() {
             case CardId::DECAY:
             case CardId::DOUBT:
             case CardId::SHAME:
-            case CardId::REGRET: {
+            case CardId::REGRET:
+            case CardId::PRIDE: {
                 CardQueueItem item;
                 item.triggerOnUse = false;
                 item.regretCardCount = cards.cardsInHand;

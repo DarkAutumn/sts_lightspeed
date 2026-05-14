@@ -321,13 +321,19 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             break;
 
         case CardType::CURSE:
-            if (!bc.player.hasRelic<RelicId::BLUE_CANDLE>()) {
+            // Java ref: AbstractCard.canUse() — curses are unplayable only when
+            // their costForTurn < -1 (the -2 sentinel for "unplayable status"),
+            // unless the player has Blue Candle. Cost-1 curses like PRIDE can
+            // be played normally (and just have no effect).
+            if (costForTurn < -1 && !bc.player.hasRelic<RelicId::BLUE_CANDLE>()) {
                 return false;
             }
             break;
 
         case CardType::STATUS:
-            if (!bc.player.hasRelic<RelicId::MEDICAL_KIT>() && id != CardId::SLIMED) {
+            // Java ref: AbstractCard.canUse() — symmetric to CURSE. Cost-1
+            // statuses like SLIMED can be played normally.
+            if (costForTurn < -1 && !bc.player.hasRelic<RelicId::MEDICAL_KIT>()) {
                 return false;
             }
             break;
