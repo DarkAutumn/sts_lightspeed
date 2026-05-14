@@ -802,6 +802,9 @@ namespace sts {
             case CardId::BLOOD_FOR_BLOOD:
                 return upgraded ? 3 : 4;
 
+            case CardId::SANDS_OF_TIME:
+                return 4;
+
             case CardId::APOTHEOSIS:
             case CardId::MAGNETISM:
             case CardId::MAYHEM:

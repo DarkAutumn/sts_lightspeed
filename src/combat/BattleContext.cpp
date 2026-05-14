@@ -1883,9 +1883,12 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::SANDS_OF_TIME: {
-            const int dmg = calculateCardDamage(c, t, up ? 28 : 20);
+            // Java ref: cards/purple/SandsOfTime.java
+            //   baseDamage 20, upgrade +6 -> 26; cost 4; selfRetain.
+            //   onRetained(): ReduceCostAction(this) — handled in
+            //   restoreRetainedCards().
+            const int dmg = calculateCardDamage(c, t, up ? 26 : 20);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Cost reduction when in discard is handled in CardInstance
             break;
         }
 
@@ -4571,6 +4574,15 @@ void BattleContext::restoreRetainedCards(int count) {
         auto &c = cards.limbo[i];
         // check that c retained or self retained?
         c.retain = false;
+        // Java AbstractCard.triggerOnOtherCardPlayed / onRetained hook.
+        // SANDS_OF_TIME (cards/purple/SandsOfTime.java:33): onRetained()
+        // adds ReduceCostAction(this) — permanently reduce base cost by 1
+        // for the rest of the combat. Implemented inline since it's the
+        // only base-game card with this trigger.
+        if (c.id == CardId::SANDS_OF_TIME && c.cost > 0) {
+            c.cost = static_cast<std::int8_t>(c.cost - 1);
+            c.costForTurn = static_cast<std::int8_t>(std::max(0, c.costForTurn - 1));
+        }
         cards.hand[cards.cardsInHand++] = c;
     }
 }
