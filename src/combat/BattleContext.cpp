@@ -1850,9 +1850,12 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::WEAVE: {
-            const int dmg = calculateCardDamage(c, t, up ? 7 : 4);
+            // Java ref: cards/purple/Weave.java
+            //   baseDamage = 4; upgradeDamage(2) -> 6.
+            //   triggerOnScry(): DiscardToHandAction(this) — return to
+            //   hand when Scry'd. Implemented in chooseScryCards().
+            const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Return to hand when discarded is handled in triggerOnManualDiscard
             break;
         }
 
@@ -5075,13 +5078,21 @@ void BattleContext::chooseExhaustCards(const fixed_list<int, 10> &idxs) {
 }
 
 void BattleContext::chooseScryCards(const fixed_list<int, 10> &idxs) {
-    // Move selected cards to discard, keep others on top of draw pile
+    // Move selected cards to discard, keep others on top of draw pile.
+    // Java AbstractCard.triggerOnScry() hook: WEAVE returns to hand when
+    // Scry'd (cards/purple/Weave.java:33). Implemented inline here
+    // since it's the only base-game card with this trigger.
     for (int i = static_cast<int>(idxs.size()) - 1; i >= 0; --i) {
         int drawIdx = idxs[i];
         if (drawIdx < static_cast<int>(cards.drawPile.size())) {
             auto c = cards.drawPile[cards.drawPile.size() - 1 - drawIdx];
             cards.drawPile.erase(cards.drawPile.begin() + (cards.drawPile.size() - 1 - drawIdx));
-            cards.moveToDiscardPile(c);
+            if (c.getId() == CardId::WEAVE && cards.cardsInHand < 10) {
+                // triggerOnScry -> DiscardToHandAction(this)
+                cards.moveToHand(c);
+            } else {
+                cards.moveToDiscardPile(c);
+            }
         }
     }
     setState(InputState::EXECUTING_ACTIONS);

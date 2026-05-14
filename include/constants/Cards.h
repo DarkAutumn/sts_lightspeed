@@ -745,6 +745,7 @@ namespace sts {
             case CardId::WARCRY:
             case CardId::BLESSING:
             case CardId::CONCENTRATE:
+            case CardId::WEAVE:
                 return 0;
 
             case CardId::DEFEND_BLUE:
