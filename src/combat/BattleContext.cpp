@@ -2793,21 +2793,23 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::REBOOT: {
+            // Java cards/blue/Reboot.java: cost 0, exhaust, magic=4 (6 upgraded).
+            //   use() -> ShuffleAllAction (hand+discard into draw),
+            //            ShuffleAction(drawPile),
+            //            DrawCardAction(magicNumber)
             addToBot( Action([=, up](BattleContext &b) {
-                // Shuffle hand into draw pile
-                for (int i = 0; i < b.cards.cardsInHand; ++i) {
-                    b.cards.drawPile.push_back(b.cards.hand[i]);
+                // Shuffle hand into draw pile via proper helpers so the
+                // hand* / drawPile* notify counters stay consistent.
+                for (int i = b.cards.cardsInHand - 1; i >= 0; --i) {
+                    const auto c = b.cards.hand[i];
+                    b.cards.notifyRemoveFromHand(c);
+                    b.cards.moveToDrawPileTop(c);
                 }
                 b.cards.cardsInHand = 0;
-                // Shuffle discard into draw pile
-                for (auto& card : b.cards.discardPile) {
-                    b.cards.drawPile.push_back(card);
-                }
-                b.cards.discardPile.clear();
-                // Shuffle the draw pile
+                // Shuffle discard pile into draw pile (helper handles counts).
+                b.cards.moveDiscardPileIntoToDrawPile();
                 b.onShuffle();
-                // Draw cards
-                b.drawCards(up ? 4 : 3);
+                b.drawCards(up ? 6 : 4);
             }) );
             break;
         }
@@ -4552,7 +4554,7 @@ void BattleContext::chooseSetupCard(int handIdx) {
     auto c = cards.hand[handIdx];
     cards.removeFromHandAtIdx(handIdx);
     c.costForTurn = 0;
-    cards.drawPile.push_back(c);
+    cards.moveToDrawPileTop(c);
 }
 
 void BattleContext::chooseNightmareCard(int handIdx) {
@@ -5182,8 +5184,9 @@ void BattleContext::chooseScryCards(const fixed_list<int, 10> &idxs) {
     for (int i = static_cast<int>(idxs.size()) - 1; i >= 0; --i) {
         int drawIdx = idxs[i];
         if (drawIdx < static_cast<int>(cards.drawPile.size())) {
-            auto c = cards.drawPile[cards.drawPile.size() - 1 - drawIdx];
-            cards.drawPile.erase(cards.drawPile.begin() + (cards.drawPile.size() - 1 - drawIdx));
+            int realIdx = static_cast<int>(cards.drawPile.size()) - 1 - drawIdx;
+            auto c = cards.drawPile[realIdx];
+            cards.removeFromDrawPileAtIdx(realIdx);
             if (c.getId() == CardId::WEAVE && cards.cardsInHand < 10) {
                 // triggerOnScry -> DiscardToHandAction(this)
                 cards.moveToHand(c);

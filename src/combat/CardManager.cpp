@@ -437,40 +437,31 @@ void CardManager::draw(BattleContext &bc, int amount) {
 }
 
 void CardManager::onTookDamage() {
-    // this method will fail catastrophically if the bloodCardCounts are not correct
+    // Defense in depth: iterate piles directly instead of trusting the
+    // per-pile bloodCardCount counters. The counters are easy to leak when
+    // any code path mutates hand/draw/discard without going through the
+    // notify* helpers (REBOOT, Setup, Scry historically did this). Blood
+    // cards are rare (BLOOD_FOR_BLOOD, MASTERFUL_STAB only), so iterating
+    // is cheap, and the early-out below short-circuits the common case.
     const bool hasAnyBloodCards = handBloodCardCount | drawPileBloodCardCount | discardPileBloodCardCount;
     if (!hasAnyBloodCards) {
         return;
     }
 
-    int i = 0;
-    int foundBloodCards = 0;
-    while (foundBloodCards < handBloodCardCount) {
+    for (int i = 0; i < cardsInHand; ++i) {
         if (hand[i].isBloodCard()) {
             hand[i].tookDamage();
-            ++foundBloodCards;
         }
-        ++i;
     }
-
-    i = 0;
-    foundBloodCards = 0;
-    while (foundBloodCards < drawPileBloodCardCount) {
-        if (drawPile[i].isBloodCard()) {
-            drawPile[i].tookDamage();
-            ++foundBloodCards;
+    for (auto &c : drawPile) {
+        if (c.isBloodCard()) {
+            c.tookDamage();
         }
-        ++i;
     }
-
-    i = 0;
-    foundBloodCards = 0;
-    while (foundBloodCards < discardPileBloodCardCount) {
-        if (discardPile[i].isBloodCard()) {
-            discardPile[i].tookDamage();
-            ++foundBloodCards;
+    for (auto &c : discardPile) {
+        if (c.isBloodCard()) {
+            c.tookDamage();
         }
-        ++i;
     }
 }
 
