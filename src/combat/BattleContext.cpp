@@ -50,6 +50,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     skipMonsterTurn = false;
     turnHasEnded = false;
     isBattleOver = false;
+    previousCardType = CardType::INVALID;
 
     actionQueue.clear();
     cardQueue.clear();
@@ -923,6 +924,12 @@ void BattleContext::useCard() {
 
     addToBot(Actions::OnAfterCardUsed());
     triggerOnOtherCardPlayed(c);
+
+    // Track previous card type for callbacks like FOLLOW_UP that need
+    // to know what was played before the current card. Updated AFTER
+    // dispatch so the current card's handler still sees the prior
+    // card's type.
+    previousCardType = c.getType();
 
     if (!item.purgeOnUse) { // todo change to checking the card queue item
         cards.removeFromHandById(c.uniqueId);
@@ -1893,10 +1900,16 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::FOLLOW_UP: {
-            const int dmg = calculateCardDamage(c, t, up ? 9 : 6);
+            // Java ref: cards/purple/FollowUp.java + actions/watcher/FollowUpAction.java
+            //   DamageAction(damage); FollowUpAction()
+            // FollowUpAction: if cardsPlayedThisCombat.size() >= 2 AND
+            //   cardsPlayedThisCombat[size-2] was ATTACK, gain 1 energy.
+            // The "size-2" entry is the card played BEFORE FollowUp.
+            const int dmg = calculateCardDamage(c, t, up ? 11 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Simplified: always gain energy if previous card was attack
-            // Real game checks playedCardsThisTurn
+            if (previousCardType == CardType::ATTACK) {
+                addToBot( Actions::GainEnergy(1) );
+            }
             break;
         }
 

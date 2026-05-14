@@ -93,6 +93,13 @@ namespace sts {
         MonsterGroup monsters;
         CardManager cards;
 
+        // Type of the most recently played card (PRE-FOLLOW_UP being
+        // played). Updated AFTER each card's use-dispatch returns, so
+        // a card's own handler can read the type of the card before
+        // it. Used by FOLLOW_UP (gain energy if previous was attack)
+        // and similar callbacks.
+        CardType previousCardType = CardType::INVALID;
+
         CardQueueItem curCardQueueItem;
 
         std::bitset<32> miscBits; // 0 stolen gold check,
