@@ -105,6 +105,11 @@ namespace sts {
         // Tracking is per-combat; cleared in init().
         int lessonLearnedCount = 0;
 
+        // Total Mantra gained this combat (used by BRILLIANCE damage
+        // scaling). Incremented by Actions::BuffPlayer<MANTRA> when
+        // amount > 0. Cleared on init().
+        int mantraGained = 0;
+
         CardQueueItem curCardQueueItem;
 
         std::bitset<32> miscBits; // 0 stolen gold check,
@@ -247,6 +252,9 @@ namespace sts {
             bc.player.buff<s>(amount);
 
             if constexpr (s == PlayerStatus::MANTRA) {
+                if (amount > 0) {
+                    bc.mantraGained += amount;
+                }
                 if (bc.player.template getStatus<PS::MANTRA>() >= 10) {
                     bc.player.template decrementStatus<PS::MANTRA>(10);
                     bc.addToTop(Actions::ChangeStance(Stance::DIVINITY));
