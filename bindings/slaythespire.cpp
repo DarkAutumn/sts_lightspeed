@@ -107,6 +107,38 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
           },
           "Internal: trigger the INVALID-card STS_ASSERT path (for tests).");
 
+    // Static card-metadata helpers (used by tests/audit tooling).
+    m.def("card_color", [](sts::CardId id) {
+        return sts::cardColors[static_cast<int>(id)];
+    });
+    m.def("card_type", [](sts::CardId id) {
+        return sts::cardTypes[static_cast<int>(id)];
+    });
+    m.def("card_cost", [](sts::CardId id, bool upgraded) {
+        return sts::getEnergyCost(id, upgraded);
+    }, pybind11::arg("id"), pybind11::arg("upgraded") = false);
+    m.def("card_rarity", [](sts::CardId id) {
+        return sts::getCardRarity(id);
+    });
+    m.def("card_does_exhaust", [](sts::CardId id, bool upgraded) {
+        return sts::doesCardExhaust(id, upgraded);
+    }, pybind11::arg("id"), pybind11::arg("upgraded") = false);
+    m.def("card_is_ethereal", [](sts::CardId id, bool upgraded) {
+        return sts::isCardEthereal(id, upgraded);
+    }, pybind11::arg("id"), pybind11::arg("upgraded") = false);
+    m.def("card_self_retain", [](sts::CardId id, bool upgraded) {
+        return sts::doesCardSelfRetain(id, upgraded);
+    }, pybind11::arg("id"), pybind11::arg("upgraded") = false);
+    m.def("card_targets_enemy", [](sts::CardId id, bool upgraded) {
+        return sts::cardTargetsEnemy(id, upgraded);
+    }, pybind11::arg("id"), pybind11::arg("upgraded") = false);
+    m.def("card_is_x_cost", [](sts::CardId id) {
+        return sts::isXCost(id);
+    });
+    m.def("card_enum_name", [](sts::CardId id) {
+        return std::string(sts::cardEnumStrings[static_cast<int>(id)]);
+    });
+
     m.def("getNNInterface", &sts::NNInterface::getInstance,
           pybind11::return_value_policy::reference,
           "gets the NNInterface object (Meyers singleton; do not delete)");
@@ -396,6 +428,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     pybind11::enum_<CardColor>(m, "CardColor")
         .value("RED", CardColor::RED)
         .value("GREEN", CardColor::GREEN)
+        .value("BLUE", CardColor::BLUE)
         .value("PURPLE", CardColor::PURPLE)
         .value("COLORLESS", CardColor::COLORLESS)
         .value("CURSE", CardColor::CURSE)
