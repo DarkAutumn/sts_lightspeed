@@ -2327,7 +2327,18 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::DISTRACTION: {
-            addToBot( Actions::MakeTempCardInHand(CardId::INVALID, up, 1) ); // Needs to be random Skill
+            // Java ref: cards/green/Distraction.java
+            //   AbstractCard c = AbstractDungeon.returnTrulyRandomCardInCombat(SKILL).makeCopy();
+            //   c.setCostForTurn(-99);
+            //   this.addToBot(new MakeTempCardInHandAction(c, true));
+            // Roll a random SKILL from the player's combat pool, set its
+            // cost to 0 for the turn, and add it to hand. Distraction's
+            // upgrade only changes base cost (1 -> 0); use effect is the
+            // same upgraded or not.
+            const CardId rolledId = getTrulyRandomCardInCombat(cardRandomRng, player.cc, CardType::SKILL);
+            CardInstance rolled(rolledId);
+            rolled.setCostForTurn(0);
+            addToBot( Actions::MakeTempCardInHand(rolled, 1) );
             break;
         }
 

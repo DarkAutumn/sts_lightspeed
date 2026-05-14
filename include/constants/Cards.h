@@ -808,6 +808,7 @@ namespace sts {
             case CardId::BODY_SLAM:
             case CardId::EXHUME:
             case CardId::MADNESS:
+            case CardId::DISTRACTION:
                 return upgraded ? 0 : 1;
 
 

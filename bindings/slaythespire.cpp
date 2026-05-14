@@ -23,6 +23,7 @@
 #include "game/Game.h"
 #include "combat/InputState.h"
 #include "combat/CardSelectInfo.h"
+#include "combat/Actions.h"
 #include "constants/Cards.h"
 #include "constants/MonsterIds.h"
 #include "constants/MonsterMoves.h"
@@ -92,6 +93,20 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     m.def("get_seed_str", &SeedHelper::getString, "gets the integral representation of seed string used in the game ui");
     m.def("get_seed_long", &SeedHelper::getLong, "gets the seed string representation of an integral seed");
     m.def("get_potion_name", &sts::getPotionName, "Get the string name of a potion");
+
+    // ------------------------------------------------------------------
+    // Test-only entry point: force the STS_ASSERT path in
+    // Actions::MakeTempCardInHand by enqueuing CardId::INVALID. Used by
+    // tests/test_assert_diagnostics.py to verify the diagnostic dump is
+    // null-safe and the abort is clean. Never use this from production
+    // code — it WILL abort the process.
+    m.def("_test_force_invalid_temp_card_in_hand",
+          [](sts::BattleContext &bc) {
+              bc.addToBot(sts::Actions::MakeTempCardInHand(sts::CardId::INVALID, false, 1));
+              bc.executeActions();
+          },
+          "Internal: trigger the INVALID-card STS_ASSERT path (for tests).");
+
     m.def("getNNInterface", &sts::NNInterface::getInstance,
           pybind11::return_value_policy::reference,
           "gets the NNInterface object (Meyers singleton; do not delete)");
