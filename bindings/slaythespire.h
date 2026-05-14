@@ -141,6 +141,7 @@ namespace sts {
         std::vector<Card> getCardReward(GameContext &gc);
         void pickRewardCard(GameContext &gc, Card card);
         void skipRewardCards(GameContext &gc);
+        void rollCardReward(GameContext &gc, Room room);
 
         std::vector<int> getNNMapRepresentation(const Map &map);
         Room getRoomType(const Map &map, int x, int y);

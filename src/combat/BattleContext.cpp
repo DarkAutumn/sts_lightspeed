@@ -1288,7 +1288,7 @@ void BattleContext::useAttackCard() {
 
         case CardId::FLECHETTES: {
             const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int count = 0;
                 for (int i=0; i<b.cards.cardsInHand; ++i) {
                     if (b.cards.hand[i].getType() == CardType::SKILL) count++;
@@ -1313,7 +1313,7 @@ void BattleContext::useAttackCard() {
             const int dmg = calculateCardDamage(c, t, c.misc);
             addToBot( Actions::AttackEnemy(t, dmg) );
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for(int i=0; i<b.cards.cardsInHand; ++i) {
                     if (b.cards.hand[i].uniqueId == c.uniqueId) {
                         b.cards.hand[i].misc -= 2;
@@ -1332,7 +1332,7 @@ void BattleContext::useAttackCard() {
         case CardId::HEEL_HOOK: {
             const int dmg = calculateCardDamage(c, t, up ? 8 : 5);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.monsters.arr[t].hasStatus<MS::WEAK>()) {
                     b.addToTop( Actions::DrawCards(1) );
                     b.addToTop( Actions::GainEnergy(1) );
@@ -1443,7 +1443,7 @@ void BattleContext::useAttackCard() {
         case CardId::ALL_FOR_ONE: {
             const int dmg = calculateCardDamage(c, t, up ? 14 : 10);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int size = b.cards.discardPile.size();
                 for (int i = size - 1; i >= 0; --i) {
                     if (b.cards.discardPile[i].costForTurn == 0 || b.cards.discardPile[i].cost == 0) {
@@ -1460,13 +1460,13 @@ void BattleContext::useAttackCard() {
         case CardId::BALL_LIGHTNING: {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::LIGHTNING); }) );
+            addToBot( Action([=] (BattleContext &b) { b.player.channelOrb(b, Orb::LIGHTNING); }) );
             break;
         }
 
         case CardId::BARRAGE: {
             const int dmg = calculateCardDamage(c, t, up ? 6 : 4);
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int numOrbs = 0;
                 for (int i=0; i<b.player.orbSlots; ++i) {
                     if (b.player.orbs[i] != Orb::EMPTY) numOrbs++;
@@ -1486,7 +1486,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::BLIZZARD: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int d = b.player.frostOrbsChanneledThisCombat * (up ? 3 : 2);
                 int baseDmg = b.calculateCardDamage(c, -1, d);
                 b.addToTop( Actions::AttackAllEnemy(baseDmg) );
@@ -1509,7 +1509,7 @@ void BattleContext::useAttackCard() {
         case CardId::CLAW: {
             const int dmg = calculateCardDamage(c, t, up ? 5 : 3);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.cards.clawDamage += 2;
             }) );
             break;
@@ -1518,7 +1518,7 @@ void BattleContext::useAttackCard() {
         case CardId::COLD_SNAP: {
             const int dmg = calculateCardDamage(c, t, up ? 9 : 6);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::FROST); }) );
+            addToBot( Action([=] (BattleContext &b) { b.player.channelOrb(b, Orb::FROST); }) );
             break;
         }
 
@@ -1532,14 +1532,14 @@ void BattleContext::useAttackCard() {
         case CardId::DOOM_AND_GLOOM: {
             const int dmg = calculateCardDamage(c, -1, up ? 14 : 10);
             addToBot( Actions::AttackAllEnemy(dmg) );
-            addToBot( Action([&](BattleContext &b) { b.player.channelOrb(b, Orb::DARK); }) );
+            addToBot( Action([=] (BattleContext &b) { b.player.channelOrb(b, Orb::DARK); }) );
             break;
         }
 
         case CardId::FTL: {
             const int dmg = calculateCardDamage(c, t, up ? 6 : 5);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.player.cardsPlayedThisTurn <= 3) { // This card included (but played count handled carefully)
                     // if it's 3rd card or less played
                     b.addToTop( Actions::DrawCards(1) );
@@ -1567,7 +1567,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::MELTER: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.monsters.arr[t].block = 0; // Remove all block
             }) );
             const int dmg = calculateCardDamage(c, t, up ? 14 : 10);
@@ -1578,7 +1578,7 @@ void BattleContext::useAttackCard() {
         case CardId::METEOR_STRIKE: {
             const int dmg = calculateCardDamage(c, t, up ? 30 : 24);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for (int i=0; i<3; ++i) b.player.channelOrb(b, Orb::PLASMA);
             }) );
             break;
@@ -1601,7 +1601,7 @@ void BattleContext::useAttackCard() {
         case CardId::SCRAPE: {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.addToTop( Actions::DrawCards(4) ); /* Scrape discard logic omitted */
             }) );
             break;
@@ -1610,7 +1610,7 @@ void BattleContext::useAttackCard() {
         case CardId::STREAMLINE: {
             const int dmg = calculateCardDamage(c, t, up ? 20 : 15);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for(int i=0; i<b.cards.cardsInHand; ++i) {
                     if (b.cards.hand[i].uniqueId == c.uniqueId) {
                         b.cards.hand[i].costForTurn = std::max(0, b.cards.hand[i].costForTurn - 1);
@@ -1643,7 +1643,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::THUNDER_STRIKE: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int d = b.player.lightningOrbsChanneledThisCombat;
                 int baseDmg = b.calculateCardDamage(c, -1, up ? 9 : 7); // Base damage sent to RandomEnemy
                 for (int i=0; i<d; ++i) {
@@ -1675,7 +1675,7 @@ void BattleContext::useAttackCard() {
             for (int i = 0; i < 4; ++i) {
                 addToBot( Actions::AttackEnemy(t, dmg) );
             }
-            addToBot( Action([&, oldStance = player.stance](BattleContext &b) mutable {
+            addToBot( Action([=, oldStance = player.stance](BattleContext &b) mutable {
                 if (b.player.stance != oldStance && b.player.stance == Stance::NEUTRAL) {
                     // If exited stance, return this card to hand
                     auto cardCopy = b.curCardQueueItem.card;
@@ -1695,7 +1695,7 @@ void BattleContext::useAttackCard() {
         case CardId::CRUSH_JOINTS: {
             const int dmg = calculateCardDamage(c, t, up ? 11 : 8);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&, t](BattleContext &b) {
+            addToBot( Action([=, t](BattleContext &b) {
                 auto &m = b.monsters.arr[t];
                 if (!m.isDeadOrEscaped() && m.isAttacking()) {
                     b.addToTop(Actions::DebuffEnemy<MS::VULNERABLE>(t, up ? 2 : 1, false));
@@ -1707,7 +1707,7 @@ void BattleContext::useAttackCard() {
         case CardId::SASH_WHIP: {
             const int dmg = calculateCardDamage(c, t, up ? 11 : 8);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&, t](BattleContext &b) {
+            addToBot( Action([=, t](BattleContext &b) {
                 auto &m = b.monsters.arr[t];
                 if (!m.isDeadOrEscaped() && !m.isAttacking()) {
                     b.addToTop(Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false));
@@ -1730,7 +1730,7 @@ void BattleContext::useAttackCard() {
         case CardId::CARVE_REALITY: {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 6);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::WRATH) {
                     b.addToTop(Actions::MakeTempCardInHand(CardId::SMITE, up, 1));
                 }
@@ -1755,7 +1755,7 @@ void BattleContext::useAttackCard() {
         case CardId::FEAR_NO_EVIL: {
             const int dmg = calculateCardDamage(c, t, up ? 11 : 8);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&, t](BattleContext &b) {
+            addToBot( Action([=, t](BattleContext &b) {
                 auto &m = b.monsters.arr[t];
                 if (!m.isDeadOrEscaped() && m.isAttacking()) {
                     b.addToTop(Actions::ChangeStance(Stance::CALM));
@@ -1793,7 +1793,7 @@ void BattleContext::useAttackCard() {
             const int dmg = calculateCardDamage(c, t, up ? 13 : 9);
             addToBot( Actions::AttackEnemy(t, dmg) );
             // Simplified: gain block equal to damage dealt
-            addToBot( Action([&, dmg](BattleContext &b) {
+            addToBot( Action([=, dmg](BattleContext &b) {
                 // Gain block equal to damage (simplified from actual mechanics)
                 b.addToTop(Actions::GainBlock(dmg));
             }));
@@ -2287,7 +2287,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::CATALYST: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.monsters.arr[t].hasStatus<MS::POISON>()) {
                     int p = b.monsters.arr[t].getStatus<MS::POISON>();
                     b.addToTop( Actions::DebuffEnemy<MS::POISON>(t, p * (up ? 2 : 1), false) ); // Doubles or triples
@@ -2350,12 +2350,12 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::ESCAPE_PLAN: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.addToTop( Actions::DrawCards(1) );
                 // Note: The conditional block should technically be checked after drawing
                 // The engine might need a conditional check. Doing rudimentary top evaluation.
             }) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.cards.cardsInHand > 0 && b.cards.hand[b.cards.cardsInHand-1].getType() == CardType::SKILL) {
                    b.addToTop( Actions::GainBlock(b.calculateCardBlock(up ? 5 : 3)) );
                 }
@@ -2388,7 +2388,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::NIGHTMARE: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.openSimpleCardSelectScreen(CardSelectTask::NIGHTMARE, 1);
             }) );
             break;
@@ -2422,7 +2422,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SETUP: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.openSimpleCardSelectScreen(CardSelectTask::SETUP, 1);
             }) );
             break;
@@ -2459,7 +2459,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::AGGREGATE: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int energyGain = b.player.cardsPlayedThisTurn;
                 b.player.gainEnergy(energyGain);
             }) );
@@ -2472,7 +2472,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::AUTO_SHIELDS: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int orbCount = b.player.orbSlots - b.player.emptyOrbCount;
                 b.player.gainBlock(b, orbCount * 3);
             }) );
@@ -2480,7 +2480,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::BOOT_SEQUENCE: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.player.emptyOrbCount == b.player.orbSlots) { // no orbs
                     b.player.channelOrb(b, Orb::FROST);
                 }
@@ -2489,7 +2489,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::CHAOS: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
                 b.player.channelOrb(b, orbType);
             }) );
@@ -2503,7 +2503,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::CHILL: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int count = b.monsters.monsterCount;
                 for (int i = 0; i < count; ++i) {
                     if (b.monsters.arr[i].curHp > 0 && !b.monsters.arr[i].isEscaping()) {
@@ -2520,7 +2520,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::CONSUME: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.buff<PS::FOCUS>(up ? 3 : 2);
                 if (b.player.orbSlots > 0) {
                     b.player.orbSlots--;
@@ -2536,7 +2536,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::COOLHEADED: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.channelOrb(b, Orb::FROST);
             }) );
             addToBot( Actions::DrawCards(1) );
@@ -2544,7 +2544,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::DARKNESS: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.channelOrb(b, Orb::DARK);
             }) );
             break;
@@ -2553,14 +2553,14 @@ void BattleContext::useSkillCard() {
         // CardId::DEFEND_BLUE is defined natively in STS lightspeed
 
         case CardId::DOUBLE_ENERGY: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.gainEnergy(b.player.energy);
             }) );
             break;
         }
 
         case CardId::DUALCAST: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.evokeOrb(b);
                 b.player.evokeOrb(b);
             }) );
@@ -2574,7 +2574,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::FISSION: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 int orbCount = b.player.orbSlots - b.player.emptyOrbCount;
                 // Evoke all orbs
                 for (int i = 0; i < orbCount; ++i) {
@@ -2597,7 +2597,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::FUSION: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
                 b.player.channelOrb(b, orbType);
             }) );
@@ -2606,14 +2606,14 @@ void BattleContext::useSkillCard() {
 
         case CardId::GENETIC_ALGORITHM: {
             addToBot( Actions::GainBlock(calculateCardBlock(up ? 5 : 1)) );
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) mutable {
                 c.misc += (up ? 2 : 1);
             }) );
             break;
         }
 
         case CardId::GLACIER: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.channelOrb(b, Orb::FROST);
                 b.player.channelOrb(b, Orb::FROST);
             }) );
@@ -2641,7 +2641,7 @@ void BattleContext::useSkillCard() {
                 times = std::min(times, player.energy + (player.hasRelic<R::CHEMICAL_X>() ? 2 : 0));
             }
             for (int i = 0; i < times; ++i) {
-                addToBot( Action([&](BattleContext &b) {
+                addToBot( Action([=] (BattleContext &b) {
                     b.player.evokeOrb(b);
                 }) );
             }
@@ -2655,7 +2655,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::RAINBOW: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for (int i = 0; i < 3; ++i) {
                     Orb orbType = static_cast<Orb>(b.miscRng.random(3) + 1); // 1-4: LIGHTNING, FROST, DARK, PLASMA
                     b.player.channelOrb(b, orbType);
@@ -2665,7 +2665,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::REBOOT: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 // Shuffle hand into draw pile
                 for (int i = 0; i < b.cards.cardsInHand; ++i) {
                     b.cards.drawPile.push_back(b.cards.hand[i]);
@@ -2685,7 +2685,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::RECURSION: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.player.orbSlots > 0 && b.player.orbs[0] != Orb::EMPTY) {
                     Orb orbType = b.player.orbs[0];
                     b.player.evokeOrb(b);
@@ -2696,7 +2696,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::RECYCLE: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 int x = item.energyOnUse;
                 if (!item.ignoreEnergyTotal && !item.freeToPlay && !c.freeToPlayOnce) {
                     x = std::min(x, b.player.energy);
@@ -2742,7 +2742,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::STACK: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int block = static_cast<int>(b.cards.discardPile.size());
                 b.player.gainBlock(b, block);
             }) );
@@ -2751,7 +2751,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::STEAM_BARRIER: {
             addToBot( Actions::GainBlock(calculateCardBlock(up ? 9 : 6)) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 // Remove this card from deck this combat (handled by exhaust in simplified form)
             }) );
             break;
@@ -2764,7 +2764,7 @@ void BattleContext::useSkillCard() {
                 times = std::min(times, player.energy);
                 player.useEnergy(times);
             }
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for (int i = 0; i < times; ++i) {
                     b.player.channelOrb(b, Orb::LIGHTNING);
                 }
@@ -2779,7 +2779,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::WHITE_NOISE: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 // Get random Defect power card
                 CardId powerId = RarityCardPool::getCardFromPool(CharacterClass::DEFECT,
                     static_cast<CardRarity>(b.miscRng.random(2)), 0); // COMMON, UNCOMMON, or RARE
@@ -2790,7 +2790,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::ZAP: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.channelOrb(b, Orb::LIGHTNING);
             }) );
             break;
@@ -2809,7 +2809,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::MEDITATE: {
             addToBot( Actions::BuffPlayer<PS::MANTRA>(up ? 4 : 3) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (!b.cards.discardPile.empty()) {
                     b.cardSelectInfo.cardSelectTask = CardSelectTask::MEDITATE;
                     b.cardSelectInfo.pickCount = 1;
@@ -2829,7 +2829,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::BLASPHEMY: {
             addToBot( Actions::ChangeStance(Stance::DIVINITY) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.buff<PS::BLASPHEMY>(1);
             }));
             break;
@@ -2853,7 +2853,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::WREATH_OF_FLAME: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::WRATH) {
                     const int dmg = up ? 8 : 5;
                     b.addToTop(Actions::AttackAllEnemy(dmg));
@@ -2871,7 +2871,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::INNER_PEACE: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::CALM) {
                     b.addToTop(Actions::DrawCards(3));
                 } else {
@@ -2883,7 +2883,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::SWIVEL: {
             addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.buff<PS::FREE_ATTACK_POWER>(1);
             }));
             break;
@@ -2896,7 +2896,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SIMMERING_FURY: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 b.player.buff<PS::SIMMERING_FURY>(1);
             }));
             break;
@@ -2909,7 +2909,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::JUDGMENT: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 // Exhaust a card costing 2 or less
                 // For now, simplified: exhaust cheapest card in hand
                 int maxCost = up ? 3 : 2;
@@ -2930,7 +2930,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SCRAWL: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 int cardsToDraw = 10 - b.cards.cardsInHand;
                 if (cardsToDraw > 0) {
                     b.addToTop(Actions::DrawCards(cardsToDraw));
@@ -2947,14 +2947,14 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SPIRIT_SHIELD: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 b.player.buff<PS::SPIRIT_SHIELD>(up ? 2 : 1);
             }));
             break;
         }
 
         case CardId::HALT: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 int block = up ? 5 : 3;
                 if (b.player.stance == Stance::WRATH) {
                     block += up ? 13 : 9;
@@ -2980,7 +2980,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::WISH: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 // Simplified: always choose deal damage option
                 // Real game offers: 6 energy, 30 damage, 30 block, or 3 Smite
                 int damage = up ? 45 : 30;
@@ -3000,7 +3000,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::CONJURE_BLADE: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 // Create a scaling card (simplified)
                 auto blade = CardInstance(CardId::SHIV, up);
                 blade.misc = up ? 6 : 3;
@@ -3029,7 +3029,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::INDIGNATION: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::WRATH) {
                     for (int i = 0; i < b.monsters.monsterCount; ++i) {
                         if (!b.monsters.arr[i].isDeadOrEscaped()) {
@@ -3045,7 +3045,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::EMPTY_MIND: {
             addToBot( Actions::DrawCards(2) );
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::NEUTRAL) {
                     b.addToTop(Actions::GainEnergy(1));
                 }
@@ -3055,7 +3055,7 @@ void BattleContext::useSkillCard() {
 
         case CardId::EMPTY_BODY: {
             addToBot( Actions::GainBlock(calculateCardBlock(up ? 11 : 7)) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 if (b.player.stance == Stance::NEUTRAL) {
                     b.addToTop(Actions::DrawCards(1));
                 }
@@ -3071,7 +3071,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::PRESSURE_POINTS: {
-            addToBot( Action([&, up](BattleContext &b) {
+            addToBot( Action([=, up](BattleContext &b) {
                 int marks = up ? 11 : 8;
                 for (int i = 0; i < b.monsters.monsterCount; ++i) {
                     if (!b.monsters.arr[i].isDeadOrEscaped()) {
@@ -3083,7 +3083,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::VAULT: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.buff<PS::EXTRA_TURN>(1);
             }));
             break;
@@ -3246,7 +3246,7 @@ void BattleContext::usePowerCard() {
         }
 
         case CardId::CAPACITOR: {
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 b.player.increaseOrbSlots(up ? 3 : 2);
             }) );
             break;
@@ -3269,7 +3269,7 @@ void BattleContext::usePowerCard() {
 
         case CardId::ELECTRODYNAMICS: {
             addToBot( Actions::BuffPlayer<PS::ELECTRO>(1) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([=] (BattleContext &b) {
                 for (int i = 0; i < (up ? 3 : 2); ++i) {
                     b.player.channelOrb(b, Orb::LIGHTNING);
                 }

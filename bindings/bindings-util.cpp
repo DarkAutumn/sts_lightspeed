@@ -440,6 +440,27 @@ namespace sts::py {
         r.removeCardReward(r.cardRewardCount-1);
     }
 
+    void rollCardReward(GameContext &gc, Room room) {
+        // Roll a card reward in `room` (typically MONSTER, ELITE, or BOSS)
+        // using the engine's rarity rules, prismatic shard logic, and
+        // cardBlizzRandomizer state. Pushes the reward into
+        // info.rewardsContainer and transitions to ScreenState::REWARDS so
+        // the existing get_card_reward / pick_reward_card / skip_reward_cards
+        // helpers operate on it.
+        //
+        // This is the binding used by the Phase 19 Act 1 RL wrapper to
+        // generate card rewards without going through enterBattle/exitBattle.
+        if (gc.outcome != GameOutcome::UNDECIDED) {
+            std::cerr << "rollCardReward called on a finished GameContext" << std::endl;
+            return;
+        }
+        CardReward cardReward = gc.createCardReward(room);
+        Rewards rewards;
+        rewards.addCardReward(cardReward);
+        gc.openCombatRewardScreen(rewards);
+        gc.curRoom = room;
+    }
+
 
 
     // BEGIN MAP THINGS ****************************

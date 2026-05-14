@@ -155,7 +155,12 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
                  d["off_monsters"]      = off;
                  return d;
              },
-             "Layout descriptor for the battle observation array (Phase 15)");
+             "Layout descriptor for the battle observation array (Phase 15)")
+        .def("getCardIdx",
+             [](const NNInterface &self, const Card &c) { return self.getCardIdx(c); },
+             "Return the dense one-hot index (0..card_block_size-1) for a Card "
+             "(== cardEncodeMap[id]*2 + upgraded). Phase 19 uses this to encode "
+             "reward-card slots in the same 744-dim format as hand slots.");
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());
@@ -213,6 +218,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def("pick_reward_card", &sts::py::pickRewardCard, "choose to obtain the card at the specified index in the card reward list", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def("skip_reward_cards", &sts::py::skipRewardCards, "choose to skip the card reward (increases max_hp by 2 with singing bowl)", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def("get_card_reward", &sts::py::getCardReward, "return the current card reward list", pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("roll_card_reward", &sts::py::rollCardReward, "roll a card reward in the given room (MONSTER/ELITE/BOSS) using engine rules and open the rewards screen", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def_property_readonly("encounter", [](const GameContext &gc) { return gc.info.encounter; })
         .def_property_readonly("deck",
                [](const GameContext &gc) { return std::vector(gc.deck.cards.begin(), gc.deck.cards.end());},
