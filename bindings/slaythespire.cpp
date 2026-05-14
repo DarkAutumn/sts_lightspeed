@@ -1772,9 +1772,12 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("floor_num", &sts::BattleContext::floorNum)
         .def_readonly("monster_turn_idx", &sts::BattleContext::monsterTurnIdx)
         .def_readonly("is_battle_over", &sts::BattleContext::isBattleOver)
-        .def_readonly("lesson_learned_count", &sts::BattleContext::lessonLearnedCount,
+        .def_readwrite("lesson_learned_count", &sts::BattleContext::lessonLearnedCount,
             "Number of non-minion kills by LESSON_LEARNED this combat. "
             "Applied to the master deck as N random upgrades in exit_battle().")
+        .def_readwrite("mantra_gained", &sts::BattleContext::mantraGained,
+            "Total Mantra buffed this combat. Used by BRILLIANCE damage "
+            "scaling (12 + mantraGained dmg, +4 on upgrade).")
         .def_readonly("previous_card_type", &sts::BattleContext::previousCardType,
             "CardType of the most recently played card this combat (default INVALID). "
             "Used by FOLLOW_UP to detect whether to refund energy.")
