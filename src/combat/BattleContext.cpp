@@ -1950,9 +1950,12 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::SIGNATURE_MOVE: {
+            // Java ref: cards/purple/SignatureMove.java
+            //   cost 2; baseDamage 30; upgradeDamage(10) -> 40.
+            //   canUse forbids play if any OTHER attack is in hand —
+            //   handled in CardInstance::canUse, not here.
             const int dmg = calculateCardDamage(c, t, up ? 40 : 30);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            // Cannot be played if other attacks played - handled in canUse
             break;
         }
 

@@ -287,7 +287,7 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
 //    }
 
 
-    // todo grand finale, signature move, reflex, deus ex machina, tactician
+    // todo grand finale, reflex, deus ex machina, tactician
     switch (getType()) {
         case CardType::ATTACK:
             if (bc.player.hasStatus<PS::ENTANGLED>()) {
@@ -295,6 +295,18 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             }
             if (getId() == CardId::CLASH && !canUseClash(bc)) {
                 return false;
+            }
+            if (getId() == CardId::SIGNATURE_MOVE) {
+                // Java ref: cards/purple/SignatureMove.java canUse():
+                //   for each card in hand: if card.type == ATTACK && card != this,
+                //   not playable. Engine identifies "this" by uniqueId.
+                for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+                    const auto &h = bc.cards.hand[i];
+                    if (h.uniqueId == uniqueId) continue;
+                    if (h.getType() == CardType::ATTACK) {
+                        return false;
+                    }
+                }
             }
             break;
 

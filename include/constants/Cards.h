@@ -785,6 +785,7 @@ namespace sts {
             case CardId::SEVER_SOUL:
             case CardId::WALLOP:
             case CardId::LESSON_LEARNED:
+            case CardId::SIGNATURE_MOVE:
                 return 2;
 
             case CardId::BARRICADE:
