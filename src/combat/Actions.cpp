@@ -6,6 +6,7 @@
 #include <algorithm>
 #include "combat/BattleContext.h"
 #include "game/Game.h"
+#include "util/StsAssert.h"
 
 using namespace sts;
 
@@ -254,11 +255,19 @@ Action Actions::PlayTopCard(int monsterTargetIdx, bool exhausts) {
 // todo fix the arguments are used wrongly all over ? what did this mean
 // todo check for master reality
 Action Actions::MakeTempCardInHand(CardId card, bool upgraded, int amount) {
+    STS_ASSERT(card != CardId::INVALID,
+               "Actions::MakeTempCardInHand(CardId,...): refusing to enqueue CardId::INVALID");
+    STS_ASSERT(amount > 0,
+               "Actions::MakeTempCardInHand(CardId,...): amount must be > 0");
     CardInstance c(card, upgraded);
     return Actions::MakeTempCardInHand(c, amount);
 }
 
 Action Actions::MakeTempCardInHand(CardInstance card, int amount) {
+    STS_ASSERT(card.id != CardId::INVALID,
+               "Actions::MakeTempCardInHand(CardInstance,...): refusing to enqueue CardInstance with id=INVALID");
+    STS_ASSERT(amount > 0,
+               "Actions::MakeTempCardInHand(CardInstance,...): amount must be > 0");
     // todo master reality when the action is created
     return {[=](BattleContext &bc) {
         for (int i = 0; i < amount; ++i) {
@@ -271,6 +280,10 @@ Action Actions::MakeTempCardInHand(CardInstance card, int amount) {
 }
 
 Action Actions::MakeTempCardInDrawPile(const CardInstance &c, int amount, bool shuffleInto) {
+    STS_ASSERT(c.id != CardId::INVALID,
+               "Actions::MakeTempCardInDrawPile: refusing to enqueue CardInstance with id=INVALID");
+    STS_ASSERT(amount > 0,
+               "Actions::MakeTempCardInDrawPile: amount must be > 0");
     // the random calculation is done in an effect so it be wrong to do it here?
     return {[=](BattleContext &bc) {
         for (int i = 0; i < amount; ++i) {
@@ -284,6 +297,10 @@ Action Actions::MakeTempCardInDrawPile(const CardInstance &c, int amount, bool s
 }
 
 Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
+    STS_ASSERT(c.id != CardId::INVALID,
+               "Actions::MakeTempCardInDiscard: refusing to enqueue CardInstance with id=INVALID");
+    STS_ASSERT(amount > 0,
+               "Actions::MakeTempCardInDiscard: amount must be > 0");
     CardInstance c_copy(c);
     return {[=](BattleContext &bc) { // todo maybe store by reference instead of copy if CardInstance is too big to fit directly in the lambda. Make a seperate space where the card will be stored
         for (int i = 0; i < amount; ++i) {
@@ -293,6 +310,10 @@ Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
 }
 
 Action Actions::MakeTempCardsInHand(std::vector<CardInstance> cards) {
+    for (const auto &card : cards) {
+        STS_ASSERT(card.id != CardId::INVALID,
+                   "Actions::MakeTempCardsInHand: refusing to enqueue CardInstance with id=INVALID");
+    }
     return {[=](BattleContext &bc) {
         for (auto c : cards) {
             c.uniqueId = bc.cards.nextUniqueCardId++;
