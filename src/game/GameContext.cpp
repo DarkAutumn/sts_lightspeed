@@ -3818,8 +3818,11 @@ void GameContext::openCardSelectScreen(CardSelectScreenType type, int selectCoun
 
 void GameContext::regainControl() {
     if (regainControlAction == nullptr) {
-        std::cerr << "regain control lambda was null" << "\n";
-//        assert(false);
+        // No post-battle callback installed (common in test harnesses and
+        // single-encounter Gym envs that don't drive the map). Treat this
+        // as "control returns to no one" rather than crashing — exitBattle()
+        // still propagated all combat results onto the GameContext above.
+        return;
     }
     regainControlAction(*this);
 }

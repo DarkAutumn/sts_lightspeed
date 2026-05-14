@@ -1270,8 +1270,8 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
             "Engine-level check whether the card is playable against any living monster (slower; for mask use)");
         
     pybind11::class_<sts::Monster>(m, "Monster")
-        .def_readonly("cur_hp", &sts::Monster::curHp)
-        .def_readonly("max_hp", &sts::Monster::maxHp)
+        .def_readwrite("cur_hp", &sts::Monster::curHp)
+        .def_readwrite("max_hp", &sts::Monster::maxHp)
         .def_readwrite("block", &sts::Monster::block)
         .def_readonly("last_damage_taken", &sts::Monster::lastDamageTaken)
         .def_property_readonly("intent", [](const sts::Monster &m) { return static_cast<int>(m.moveHistory[0]); })
@@ -1727,6 +1727,12 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("floor_num", &sts::BattleContext::floorNum)
         .def_readonly("monster_turn_idx", &sts::BattleContext::monsterTurnIdx)
         .def_readonly("is_battle_over", &sts::BattleContext::isBattleOver)
+        .def_readonly("lesson_learned_count", &sts::BattleContext::lessonLearnedCount,
+            "Number of non-minion kills by LESSON_LEARNED this combat. "
+            "Applied to the master deck as N random upgrades in exit_battle().")
+        .def_readonly("previous_card_type", &sts::BattleContext::previousCardType,
+            "CardType of the most recently played card this combat (default INVALID). "
+            "Used by FOLLOW_UP to detect whether to refund energy.")
         .def_property_readonly("encounter",
             [](const sts::BattleContext &bc) { return bc.encounter; },
             "MonsterEncounter for this fight")

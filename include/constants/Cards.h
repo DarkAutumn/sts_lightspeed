@@ -784,6 +784,7 @@ namespace sts {
             case CardId::SEARING_BLOW:
             case CardId::SEVER_SOUL:
             case CardId::WALLOP:
+            case CardId::LESSON_LEARNED:
                 return 2;
 
             case CardId::BARRICADE:

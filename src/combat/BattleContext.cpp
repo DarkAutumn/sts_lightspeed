@@ -51,6 +51,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     turnHasEnded = false;
     isBattleOver = false;
     previousCardType = CardType::INVALID;
+    lessonLearnedCount = 0;
 
     actionQueue.clear();
     cardQueue.clear();
@@ -502,7 +503,13 @@ void BattleContext::exitBattle(GameContext &g) const {
     g.gold = player.gold;
 
 
-    // todo lesson learned bitset
+    // Lesson Learned: upgrade N random cards in the master deck where N
+    // is the number of non-minion kills made by LESSON_LEARNED this combat.
+    // Java upgrades 1 per kill via miscRng inside LessonLearnedAction; we
+    // batch them via Deck::upgradeRandomCards which shuffles + picks N.
+    if (lessonLearnedCount > 0) {
+        g.deck.upgradeRandomCards(g.miscRng, lessonLearnedCount);
+    }
 
     // relic counters
     updateRelicsOnExit(g);
@@ -1914,9 +1921,31 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::LESSON_LEARNED: {
-            const int dmg = calculateCardDamage(c, t, up ? 14 : 10);
-            addToBot( Actions::AttackEnemy(t, dmg) );
-            // Upgrade on kill simplified
+            // Java ref: cards/purple/LessonLearned.java + actions/watcher/LessonLearnedAction.java
+            //   baseDamage 10, upgradeDamage(3) -> 13 upgraded.
+            //   On hit: if target is now dead AND not a minion AND not regrow,
+            //   pick a random upgradeable card from masterDeck and upgrade it.
+            // Pattern mirrors Actions::RitualDaggerAction — damage AND kill
+            // check live in a single Action so the post-kill bookkeeping
+            // happens before victory-cleanup drops further queued actions.
+            // The master-deck mutation itself is deferred to exitBattle()
+            // via lessonLearnedCount.
+            const int dmg = calculateCardDamage(c, t, up ? 13 : 10);
+            const int tIdx = t;
+            addToBot( {[tIdx, dmg] (BattleContext &bc) {
+                auto &m = bc.monsters.arr[tIdx];
+                if (m.isDeadOrEscaped()) {
+                    return;
+                }
+                m.attacked(bc, dmg);
+                const bool killed = !m.isAlive()
+                    && !m.hasStatus<MS::MINION>()
+                    && !(m.hasStatus<MS::REGROW>() && bc.monsters.monstersAlive > 0);
+                if (killed) {
+                    ++bc.lessonLearnedCount;
+                }
+                bc.checkCombat();
+            }} );
             break;
         }
 

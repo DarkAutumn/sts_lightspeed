@@ -93,12 +93,17 @@ namespace sts {
         MonsterGroup monsters;
         CardManager cards;
 
-        // Type of the most recently played card (PRE-FOLLOW_UP being
-        // played). Updated AFTER each card's use-dispatch returns, so
-        // a card's own handler can read the type of the card before
-        // it. Used by FOLLOW_UP (gain energy if previous was attack)
-        // and similar callbacks.
+        // Track previous card type for callbacks like FOLLOW_UP that need
+        // to know what was played before the current card. Updated AFTER
+        // dispatch so the current card's handler still sees the prior
+        // card's type.
         CardType previousCardType = CardType::INVALID;
+
+        // Lesson Learned: each non-minion non-regrow kill via LL queues
+        // one master-deck upgrade. Applied on exitBattle() via
+        // Deck::upgradeRandomCards(miscRng, lessonLearnedCount).
+        // Tracking is per-combat; cleared in init().
+        int lessonLearnedCount = 0;
 
         CardQueueItem curCardQueueItem;
 
