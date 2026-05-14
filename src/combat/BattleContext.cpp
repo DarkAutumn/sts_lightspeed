@@ -1219,7 +1219,7 @@ void BattleContext::useAttackCard() {
         case CardId::BANE: {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([t, dmg](BattleContext &b) {
                 if (b.monsters.arr[t].hasStatus<MS::POISON>()) {
                     b.addToTop( Actions::AttackEnemy(t, dmg) );
                 }
@@ -1551,7 +1551,7 @@ void BattleContext::useAttackCard() {
         case CardId::GO_FOR_THE_EYES: {
             const int dmg = calculateCardDamage(c, t, up ? 4 : 3);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([t, up](BattleContext &b) {
                 if (b.monsters.arr[t].isAttacking()) {
                     b.addToTop( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
                 }
@@ -1625,7 +1625,7 @@ void BattleContext::useAttackCard() {
 
         case CardId::SUNDER: {
             const int dmg = calculateCardDamage(c, t, up ? 32 : 24);
-            addToBot( Action([&](BattleContext &b) {
+            addToBot( Action([t, dmg](BattleContext &b) {
                 int hpBefore = b.monsters.arr[t].curHp;
                 b.monsters.arr[t].attacked(b, dmg);
                 if (hpBefore > 0 && b.monsters.arr[t].curHp <= 0) {
