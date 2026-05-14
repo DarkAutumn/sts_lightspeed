@@ -1568,11 +1568,13 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::FTL: {
+            // Java: cards/blue/FTL.java — FTLAction draws 1 card if
+            // cardsPlayedThisTurn < magicNumber. magicNumber = 3, upgraded 4.
             const int dmg = calculateCardDamage(c, t, up ? 6 : 5);
+            const int threshold = up ? 4 : 3;
             addToBot( Actions::AttackEnemy(t, dmg) );
             addToBot( Action([=] (BattleContext &b) {
-                if (b.player.cardsPlayedThisTurn <= 3) { // This card included (but played count handled carefully)
-                    // if it's 3rd card or less played
+                if (b.player.cardsPlayedThisTurn < threshold) {
                     b.addToTop( Actions::DrawCards(1) );
                 }
             }) );
@@ -1633,7 +1635,7 @@ void BattleContext::useAttackCard() {
             const int dmg = calculateCardDamage(c, t, up ? 10 : 7);
             addToBot( Actions::AttackEnemy(t, dmg) );
             addToBot( Action([=] (BattleContext &b) {
-                b.addToTop( Actions::DrawCards(4) ); /* Scrape discard logic omitted */
+                b.addToTop( Actions::DrawCards(up ? 5 : 4) ); /* Scrape discard logic omitted */
             }) );
             break;
         }
@@ -1807,10 +1809,13 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::TALK_TO_THE_HAND: {
+            // Java: cards/purple/TalkToTheHand.java
+            //   addToBot(new ApplyPowerAction(m, p, new BlockReturnPower(m, magicNumber), magicNumber))
+            //   magicNumber = 2, upgradeMagicNumber(1) -> 3
+            //   Then GainBlock(magicNumber) on self.
             const int dmg = calculateCardDamage(c, t, up ? 7 : 5);
             addToBot( Actions::AttackEnemy(t, dmg) );
-            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
-            addToBot( Actions::DrawCards(1) );
+            addToBot( Actions::DebuffEnemy<MS::BLOCK_RETURN>(t, up ? 3 : 2, false) );
             break;
         }
 
@@ -2657,7 +2662,7 @@ void BattleContext::useSkillCard() {
             addToBot( Action([=] (BattleContext &b) {
                 b.player.channelOrb(b, Orb::FROST);
             }) );
-            addToBot( Actions::DrawCards(1) );
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
             break;
         }
 
@@ -2855,7 +2860,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::SKIM: {
-            addToBot( Actions::DrawCards(3) );
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
             break;
         }
 
@@ -2966,19 +2971,16 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::WORSHIP: {
-            addToBot( Actions::BuffPlayer<PS::MANTRA>(up ? 6 : 5) );
+            // Java: cards/purple/Worship.java — magicNumber = 5 (both base
+            // and upgraded). Upgrade adds selfRetain, NOT mantra amount.
+            addToBot( Actions::BuffPlayer<PS::MANTRA>(5) );
             break;
         }
 
         case CardId::WREATH_OF_FLAME: {
-            addToBot( Action([=, up](BattleContext &b) {
-                if (b.player.stance == Stance::WRATH) {
-                    const int dmg = up ? 8 : 5;
-                    b.addToTop(Actions::AttackAllEnemy(dmg));
-                }
-                b.addToTop(Actions::GainEnergy(1));
-                b.addToTop(Actions::ChangeStance(Stance::WRATH));
-            }));
+            // Java: cards/purple/WreathOfFlame.java — just applies VigorPower
+            // for `magicNumber`. magicNumber = 5, upgradeMagicNumber(3) -> 8.
+            addToBot( Actions::BuffPlayer<PS::VIGOR>(up ? 8 : 5) );
             break;
         }
 
@@ -2991,7 +2993,7 @@ void BattleContext::useSkillCard() {
         case CardId::INNER_PEACE: {
             addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::CALM) {
-                    b.addToTop(Actions::DrawCards(3));
+                    b.addToTop(Actions::DrawCards(up ? 4 : 3));
                 } else {
                     b.addToTop(Actions::ChangeStance(Stance::CALM));
                 }
@@ -3151,7 +3153,7 @@ void BattleContext::useSkillCard() {
                 if (b.player.stance == Stance::WRATH) {
                     for (int i = 0; i < b.monsters.monsterCount; ++i) {
                         if (!b.monsters.arr[i].isDeadOrEscaped()) {
-                            b.addToTop(Actions::DebuffEnemy<MS::VULNERABLE>(i, up ? 4 : 3, false));
+                            b.addToTop(Actions::DebuffEnemy<MS::VULNERABLE>(i, up ? 5 : 3, false));
                         }
                     }
                 } else {
@@ -3162,7 +3164,7 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::EMPTY_MIND: {
-            addToBot( Actions::DrawCards(2) );
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
             addToBot( Action([=, up](BattleContext &b) {
                 if (b.player.stance == Stance::NEUTRAL) {
                     b.addToTop(Actions::GainEnergy(1));
@@ -3210,8 +3212,9 @@ void BattleContext::useSkillCard() {
         }
 
         case CardId::INSIGHT: {
-            addToBot( Actions::DrawCards(1) );
-            // Exhausts when played
+            // Java: tempCards/Insight.java — DrawCardAction(magicNumber)
+            // magicNumber = 2, upgradeMagicNumber(1) -> 3. Card exhausts.
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
             break;
         }
 
@@ -3421,6 +3424,10 @@ void BattleContext::usePowerCard() {
         }
 
         case CardId::ELECTRODYNAMICS: {
+            // Java: cards/blue/Electrodynamics.java
+            //   for (i=0; i<magicNumber; ++i) channel(new Lightning());
+            //   then ApplyPower(Electrodynamics)
+            // magicNumber = 2, upgradeMagicNumber(1) -> 3.
             addToBot( Actions::BuffPlayer<PS::ELECTRO>(1) );
             addToBot( Action([=] (BattleContext &b) {
                 for (int i = 0; i < (up ? 3 : 2); ++i) {
@@ -3441,12 +3448,16 @@ void BattleContext::usePowerCard() {
         }
 
         case CardId::LOOP: {
-            addToBot( Actions::BuffPlayer<PS::LOOP>(1) );
+            // Java: cards/blue/Loop.java — LoopPower(magicNumber).
+            // magicNumber = 1, upgradeMagicNumber(1) -> 2.
+            addToBot( Actions::BuffPlayer<PS::LOOP>(up ? 2 : 1) );
             break;
         }
 
         case CardId::MACHINE_LEARNING: {
-            addToBot( Actions::BuffPlayer<PS::MACHINE_LEARNING>(up ? 2 : 1) );
+            // Java: cards/blue/MachineLearning.java — DrawPower(magicNumber=1).
+            // Upgrade adds isInnate (handled in Cards.h), NOT magic amount.
+            addToBot( Actions::BuffPlayer<PS::MACHINE_LEARNING>(1) );
             break;
         }
 
@@ -3461,7 +3472,9 @@ void BattleContext::usePowerCard() {
         }
 
         case CardId::STORM: {
-            addToBot( Actions::BuffPlayer<PS::STORM>(up ? 2 : 1) );
+            // Java: cards/blue/Storm.java — StormPower(magicNumber=1).
+            // Upgrade adds isInnate (handled in Cards.h), NOT magic amount.
+            addToBot( Actions::BuffPlayer<PS::STORM>(1) );
             break;
         }
 
