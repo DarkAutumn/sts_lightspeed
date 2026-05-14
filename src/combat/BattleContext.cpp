@@ -1836,9 +1836,16 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::CONCLUDE: {
+            // Java ref: cards/purple/Conclude.java
+            //   DamageAllEnemiesAction(p, multiDamage, dmgType, NONE);
+            //   PressEndTurnButtonAction();
             const int dmg = calculateCardDamage(c, -1, up ? 16 : 12);
             addToBot( Actions::AttackAllEnemy(dmg) );
-            // Minion killing simplified - just deal damage
+            addToBot( Action([](BattleContext &b) {
+                if (!b.endTurnQueued && b.outcome == Outcome::UNDECIDED) {
+                    b.endTurn();
+                }
+            }));
             break;
         }
 
