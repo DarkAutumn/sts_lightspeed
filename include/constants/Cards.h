@@ -743,6 +743,7 @@ namespace sts {
             case CardId::VIOLENCE:
             case CardId::WARCRY:
             case CardId::BLESSING:
+            case CardId::CONCENTRATE:
                 return 0;
 
             case CardId::DEFEND_BLUE:
@@ -784,6 +785,9 @@ namespace sts {
 
             case CardId::BARRICADE:
             case CardId::CORRUPTION:
+                return upgraded ? 2 : 3;
+
+            case CardId::BULLET_TIME:
                 return upgraded ? 2 : 3;
 
             case CardId::BLUDGEON:

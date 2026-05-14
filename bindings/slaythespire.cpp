@@ -1290,8 +1290,12 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     pybind11::class_<sts::Player>(m, "Player")
         .def_readonly("cur_hp", &sts::Player::curHp)
         .def_readonly("max_hp", &sts::Player::maxHp)
-        .def_readonly("block", &sts::Player::block)
-        .def_readonly("energy", &sts::Player::energy);
+        .def_readwrite("block", &sts::Player::block)
+        .def_readwrite("energy", &sts::Player::energy)
+        .def("has_status", &sts::Player::hasStatusRuntime,
+             "Check whether the player has a given PlayerStatus (any value > 0).")
+        .def("get_status", &sts::Player::getStatusRuntime,
+             "Get the integer value of a given PlayerStatus (0 if absent).");
         
     pybind11::class_<sts::CardManager>(m, "CardManager")
         .def_property_readonly("hand", [](const sts::CardManager &cm) {
@@ -1721,7 +1725,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_property_readonly("encounter",
             [](const sts::BattleContext &bc) { return bc.encounter; },
             "MonsterEncounter for this fight")
-        .def_readonly("player", &sts::BattleContext::player)
+        .def_readwrite("player", &sts::BattleContext::player)
         .def_readonly("monsters", &sts::BattleContext::monsters)
         .def_readonly("cards", &sts::BattleContext::cards)
         .def("is_card_play_allowed", &sts::BattleContext::isCardPlayAllowed,

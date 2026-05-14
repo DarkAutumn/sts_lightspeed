@@ -1914,6 +1914,24 @@ void BattleContext::useAttackCard() {
             break;
         }
 
+        case CardId::EXPUNGER: {
+            // Java ref: cards/tempCards/Expunger.java
+            //   for (int i = 0; i < magicNumber; ++i)
+            //     DamageAction(m, DamageInfo(p, damage));
+            //   damage = 9, upgrade -> 15 (upgradeDamage(+6))
+            //   magicNumber is set via setX() to energy spent (X-cost).
+            // X-cost: hits `energyOnUse` times. Pattern follows SKEWER.
+            const int dmg = calculateCardDamage(c, t, up ? 15 : 9);
+            addToBot( Action([=] (BattleContext &b) {
+                int hits = item.energyOnUse;
+                if (b.player.hasRelic<R::CHEMICAL_X>()) hits += 2;
+                for (int i = 0; i < hits; ++i) {
+                    b.addToTop( Actions::AttackEnemy(t, dmg) );
+                }
+            }) );
+            break;
+        }
+
         default:
             throw std::runtime_error(std::string("attempted to use unimplemented card: ") + c.getName());
     }
@@ -3112,6 +3130,45 @@ void BattleContext::useSkillCard() {
             break;
         }
 
+        // ********************* PHASE 20.B.1 CARDS *********************
+
+        case CardId::CONCENTRATE: {
+            // Java ref: cards/green/Concentrate.java
+            //   this.addToBot(new DiscardAction(p, p, magicNumber, false));
+            //   this.addToBot(new GainEnergyAction(2));
+            //   magicNumber = 3, upgrade -> 2 (upgradeMagicNumber(-1))
+            // Player chooses N cards from hand to discard, then gains 2 energy.
+            const int discardCount = up ? 2 : 3;
+            addToBot( Actions::DiscardAction(discardCount, /*isRandom=*/false,
+                                              /*anyNumber=*/false, /*canPickZero=*/false) );
+            addToBot( Actions::GainEnergy(2) );
+            break;
+        }
+
+        case CardId::BULLET_TIME: {
+            // Java ref: cards/green/BulletTime.java
+            //   this.addToBot(new ApplyPowerAction(p, p, new NoDrawPower(p), 1));
+            //   this.addToBot(new ApplyBulletTimeAction());
+            // ApplyBulletTimeAction sets costForTurn=0 on every hand card.
+            // Cost is 3 unupgraded, 2 upgraded (handled in getEnergyCost).
+            addToBot( Actions::DebuffPlayer<PS::NO_DRAW>() );
+            addToBot( Action([] (BattleContext &b) {
+                for (int i = 0; i < b.cards.cardsInHand; ++i) {
+                    b.cards.hand[i].setCostForTurn(0);
+                }
+            }) );
+            break;
+        }
+
+        case CardId::SAFETY: {
+            // Java ref: cards/tempCards/Safety.java
+            //   baseBlock = 12, upgrade -> 16 (upgradeBlock(+4))
+            //   selfRetain = true; exhaust = true (handled by trigger flags)
+            // Pure block gain. Cost 1; upgrade keeps cost 1.
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
+            break;
+        }
+
         // BLESSING card doesn't exist - case removed
 
         default:
@@ -3393,6 +3450,26 @@ void BattleContext::usePowerCard() {
 
         case CardId::OMEGA: {
             player.buff<PS::OMEGA>(1);
+            break;
+        }
+
+        // ********************* PHASE 20.B.1 EVENT POWERS *********************
+
+        case CardId::BECOME_ALMIGHTY: {
+            // Java ref: cards/optionCards/BecomeAlmighty.java
+            //   ApplyPowerAction(p, p, new StrengthPower(p, magicNumber), magicNumber);
+            //   magicNumber = 3, upgrade -> 4 (upgradeMagicNumber(+1))
+            // Mind Bloom event reward. POWER type, applies Strength.
+            player.buff<PS::STRENGTH>(up ? 4 : 3);
+            break;
+        }
+
+        case CardId::LIVE_FOREVER: {
+            // Java ref: cards/optionCards/LiveForever.java
+            //   ApplyPowerAction(p, p, new PlatedArmorPower(p, magicNumber), magicNumber);
+            //   magicNumber = 6, upgrade -> 8 (upgradeMagicNumber(+2))
+            // Mind Bloom event reward. POWER type, applies Plated Armor.
+            player.buff<PS::PLATED_ARMOR>(up ? 8 : 6);
             break;
         }
 
