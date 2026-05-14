@@ -1272,7 +1272,8 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
     pybind11::class_<sts::Monster>(m, "Monster")
         .def_readonly("cur_hp", &sts::Monster::curHp)
         .def_readonly("max_hp", &sts::Monster::maxHp)
-        .def_readonly("block", &sts::Monster::block)
+        .def_readwrite("block", &sts::Monster::block)
+        .def_readonly("last_damage_taken", &sts::Monster::lastDamageTaken)
         .def_property_readonly("intent", [](const sts::Monster &m) { return static_cast<int>(m.moveHistory[0]); })
         .def("is_dying", &sts::Monster::isDying)
         .def("is_escaping", &sts::Monster::isEscaping)
@@ -1281,10 +1282,14 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         
     pybind11::class_<sts::MonsterGroup>(m, "MonsterGroup")
         .def_readonly("monster_count", &sts::MonsterGroup::monsterCount)
-        .def_property_readonly("arr", [](const sts::MonsterGroup &mg) {
-             std::vector<sts::Monster> ret;
-             for(int i=0; i<mg.monsterCount; ++i) ret.push_back(mg.arr[i]);
-             return ret;
+        .def_property_readonly("arr", [](sts::MonsterGroup &mg) {
+             // Return live references to the underlying monster slots so
+             // tests can mutate state (block, status, etc.) directly.
+             pybind11::list out;
+             for (int i = 0; i < mg.monsterCount; ++i) {
+                 out.append(pybind11::cast(&mg.arr[i], pybind11::return_value_policy::reference));
+             }
+             return out;
         });
         
     pybind11::class_<sts::Player>(m, "Player")

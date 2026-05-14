@@ -1801,12 +1801,19 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::WALLOP: {
+            // Java ref: cards/purple/Wallop.java + actions/watcher/WallopAction.java
+            //   target.damage(info);
+            //   if (target.lastDamageTaken > 0) gainBlock(target.lastDamageTaken);
+            // Gain block equal to UNBLOCKED damage dealt (HP loss), not raw
+            // damage. Properly handles enemy block, intangible, invincible.
             const int dmg = calculateCardDamage(c, t, up ? 13 : 9);
-            addToBot( Actions::AttackEnemy(t, dmg) );
-            // Simplified: gain block equal to damage dealt
-            addToBot( Action([=, dmg](BattleContext &b) {
-                // Gain block equal to damage (simplified from actual mechanics)
-                b.addToTop(Actions::GainBlock(dmg));
+            const int targetIdx = t;
+            addToBot( Actions::AttackEnemy(targetIdx, dmg) );
+            addToBot( Action([targetIdx](BattleContext &b) {
+                const int hpLoss = b.monsters.arr[targetIdx].lastDamageTaken;
+                if (hpLoss > 0) {
+                    b.addToTop(Actions::GainBlock(hpLoss));
+                }
             }));
             break;
         }

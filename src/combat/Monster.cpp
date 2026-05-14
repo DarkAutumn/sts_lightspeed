@@ -434,6 +434,11 @@ void Monster::attacked(BattleContext &bc, int damage) {
         bc.addToBot(Actions::DebuffEnemy<MS::VULNERABLE>(idx, 2, false) );
     }
 
+    // Track HP damage for damage-feedback cards (WALLOP etc.).
+    // Mirrors Java AbstractCreature.lastDamageTaken which is the
+    // damage that pierced block.
+    lastDamageTaken = std::max(0, damage);
+
     if (damage > 0) { // todo can damage be zero???
         attackedUnblockedHelper(bc, damage);
     }
@@ -490,6 +495,9 @@ void Monster::damage(BattleContext &bc, int damage) {
     if (hadBlock && block == 0 && bc.player.hasRelic<RelicId::HAND_DRILL>()) {
         bc.addToBot(Actions::DebuffEnemy<MS::VULNERABLE>(idx, 2, false) );
     }
+
+    // Track HP damage for damage-feedback cards.
+    lastDamageTaken = std::max(0, damage);
 
     if (damage > 0) {
         damageUnblockedHelper(bc, damage);

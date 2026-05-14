@@ -66,6 +66,13 @@ namespace sts {
         int uniquePower0 = 0; // unique powers, hexaghost orbCount
         std::int16_t uniquePower1 = 0; // Corrupt Heart invincible,
 
+        // Last damage actually dealt to this monster's HP (after block,
+        // intangible, invincible — but before death). Set in
+        // Monster::attacked() and Monster::damage(); used by WALLOP and
+        // similar damage-feedback cards. Mirrors Java's
+        // AbstractCreature.lastDamageTaken.
+        int lastDamageTaken = 0;
+
         // Shield Gremlin target
         // GreenLouse / RedLouse D
         // Red Slaver entangled turn
