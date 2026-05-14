@@ -554,6 +554,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .value("JUGGERNAUT", PlayerStatus::JUGGERNAUT)
         .value("LIKE_WATER", PlayerStatus::LIKE_WATER)
         .value("LOOP", PlayerStatus::LOOP)
+        .value("MACHINE_LEARNING", PlayerStatus::MACHINE_LEARNING)
         .value("MAGNETISM", PlayerStatus::MAGNETISM)
         .value("MAYHEM", PlayerStatus::MAYHEM)
         .value("MENTAL_FORTRESS", PlayerStatus::MENTAL_FORTRESS)
@@ -574,6 +575,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .value("SIMMERING_FURY", PlayerStatus::SIMMERING_FURY)
         .value("SPIRIT_SHIELD", PlayerStatus::SPIRIT_SHIELD)
         .value("STATIC_DISCHARGE", PlayerStatus::STATIC_DISCHARGE)
+        .value("STORM", PlayerStatus::STORM)
         .value("STUDY", PlayerStatus::STUDY)
         .value("THORNS", PlayerStatus::THORNS)
         .value("THOUSAND_CUTS", PlayerStatus::THOUSAND_CUTS)
@@ -1311,7 +1313,11 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def("is_dying", &sts::Monster::isDying)
         .def("is_escaping", &sts::Monster::isEscaping)
         .def("is_dead_or_escaped", &sts::Monster::isDeadOrEscaped)
-        .def("is_targetable", &sts::Monster::isTargetable);
+        .def("is_targetable", &sts::Monster::isTargetable)
+        .def("get_status", &sts::Monster::getStatusInternal,
+            "Get the value of a MonsterStatus on this monster.")
+        .def("has_status", &sts::Monster::hasStatusInternal,
+            "Returns true if this monster has the given MonsterStatus.");
         
     pybind11::class_<sts::MonsterGroup>(m, "MonsterGroup")
         .def_readonly("monster_count", &sts::MonsterGroup::monsterCount)
@@ -1330,6 +1336,7 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def_readonly("max_hp", &sts::Player::maxHp)
         .def_readwrite("block", &sts::Player::block)
         .def_readwrite("energy", &sts::Player::energy)
+        .def_readwrite("stance", &sts::Player::stance)
         .def_readwrite("orb_slots", &sts::Player::orbSlots)
         .def_property("orbs",
             [](const sts::Player &p) {
