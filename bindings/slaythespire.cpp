@@ -266,6 +266,160 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .def("skip_reward_cards", &sts::py::skipRewardCards, "choose to skip the card reward (increases max_hp by 2 with singing bowl)", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def("get_card_reward", &sts::py::getCardReward, "return the current card reward list", pybind11::call_guard<pybind11::gil_scoped_release>())
         .def("roll_card_reward", &sts::py::rollCardReward, "roll a card reward in the given room (MONSTER/ELITE/BOSS) using engine rules and open the rewards screen", pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("post_combat_apply",
+            [](GameContext &gc, BattleContext &bc, Room room) {
+                // Phase 21: drive the full post-combat path that the
+                // wrapper has historically skipped. Sets curRoom, installs
+                // the engine's afterBattle callback, calls bc.exitBattle
+                // (which carries HP/gold + fires Burning Blood / Black
+                // Blood / Meat on the Bone / Pen Nib counters / Lesson
+                // Learned upgrades / Genetic Algorithm deck mutations
+                // and finally invokes regainControl -> afterBattle ->
+                // opens the right reward screen via createCombatReward /
+                // createEliteCombatReward / createBossCombatReward).
+                //
+                // Then auto-accepts the non-card rewards: gold, potions
+                // (engine handles Sozu + full-inventory silent-drop) and
+                // relics (stopping at the first relic that opens a
+                // CARD_SELECT/REWARDS screen — caller decides how to
+                // resolve that, e.g. by calling
+                // ``gc.auto_resolve_relic_pickup_screen()``).
+                //
+                // Leaves the card reward(s) untouched so the existing
+                // pick_reward_card / skip_reward_cards flow handles them.
+                //
+                // Returns a dict with: gold_gained, potions_gained,
+                // relics_gained (list[RelicId]), card_reward_pending,
+                // pickup_screen_pending, pickup_screen_type.
+                gc.curRoom = room;
+                gc.regainControlAction = [](GameContext &g) { g.afterBattle(); };
+                bc.exitBattle(gc);
+
+                pybind11::dict result;
+                int gold_gained = 0;
+                int potions_gained_before = gc.potionCount;
+                std::vector<RelicId> relics_gained;
+                bool pickup_screen_pending = false;
+                int pickup_screen_type = -1;
+
+                auto &r = gc.info.rewardsContainer;
+
+                for (int i = 0; i < r.goldRewardCount; ++i) {
+                    if (r.gold[i] > 0) {
+                        gc.obtainGold(r.gold[i]);
+                        gold_gained += r.gold[i];
+                    }
+                }
+                r.goldRewardCount = 0;
+
+                for (int i = 0; i < r.potionCount; ++i) {
+                    if (r.potions[i] != Potion::INVALID &&
+                        r.potions[i] != Potion::EMPTY_POTION_SLOT) {
+                        gc.obtainPotion(r.potions[i]);
+                    }
+                }
+                r.potionCount = 0;
+                int potions_gained = gc.potionCount - potions_gained_before;
+
+                int relic_idx = 0;
+                while (relic_idx < r.relicCount) {
+                    RelicId rid = r.relics[relic_idx];
+                    if (rid == RelicId::INVALID) { ++relic_idx; continue; }
+                    bool opensScreen = gc.obtainRelic(rid);
+                    relics_gained.push_back(rid);
+                    ++relic_idx;
+                    if (opensScreen) {
+                        pickup_screen_pending = true;
+                        pickup_screen_type = static_cast<int>(gc.info.selectScreenType);
+                        break;
+                    }
+                }
+                int remaining = r.relicCount - relic_idx;
+                for (int i = 0; i < remaining; ++i) {
+                    r.relics[i] = r.relics[relic_idx + i];
+                }
+                r.relicCount = remaining;
+
+                result["gold_gained"] = gold_gained;
+                result["potions_gained"] = potions_gained;
+                result["relics_gained"] = relics_gained;
+                result["card_reward_pending"] = (r.cardRewardCount > 0);
+                result["pickup_screen_pending"] = pickup_screen_pending;
+                result["pickup_screen_type"] = pickup_screen_type;
+                return result;
+            },
+            "Phase 21: drive bc.exit_battle + auto-accept gold/potion/relic rewards. "
+            "Leaves card reward for the agent. Returns a dict — see source for fields.")
+        .def("auto_resolve_relic_pickup_screen",
+            [](GameContext &gc) {
+                // Phase 21.C: auto-pick first index(es) on whatever
+                // CARD_SELECT screen a relic pickup just opened, then
+                // drain any cascaded REWARDS screen (Cauldron extra
+                // potions, Calling Bell 3 relics, etc.) — recursively
+                // re-entering CARD_SELECT if those relics also open
+                // screens. The auto-pick policy is "engine default
+                // first index" which matches deterministic-seed behavior.
+                //
+                // v1 default policy: pick the first toSelectCount cards.
+                // The per-screen-type policy callbacks are intentionally
+                // structured so a future v2 can route the choice to the
+                // agent without engine changes. See plan.md Phase 21
+                // "Forward-compat design constraint".
+                pybind11::dict result;
+                int iterations = 0;
+                const int max_iter = 64;
+                while (iterations < max_iter) {
+                    ++iterations;
+                    if (gc.screenState == ScreenState::CARD_SELECT) {
+                        int already_selected = static_cast<int>(gc.info.haveSelectedCards.size());
+                        int to_pick = gc.info.toSelectCount - already_selected;
+                        if (to_pick <= 0 || gc.info.toSelectCards.empty()) {
+                            break;
+                        }
+                        for (int i = 0; i < to_pick; ++i) {
+                            if (gc.info.toSelectCards.empty()) break;
+                            gc.chooseSelectCardScreenOption(0);
+                        }
+                    } else if (gc.screenState == ScreenState::REWARDS) {
+                        auto &r = gc.info.rewardsContainer;
+                        bool acted = false;
+                        for (int i = 0; i < r.goldRewardCount; ++i) {
+                            if (r.gold[i] > 0) gc.obtainGold(r.gold[i]);
+                        }
+                        if (r.goldRewardCount > 0) { r.goldRewardCount = 0; acted = true; }
+                        for (int i = 0; i < r.potionCount; ++i) {
+                            if (r.potions[i] != Potion::INVALID &&
+                                r.potions[i] != Potion::EMPTY_POTION_SLOT) {
+                                gc.obtainPotion(r.potions[i]);
+                            }
+                        }
+                        if (r.potionCount > 0) { r.potionCount = 0; acted = true; }
+                        if (r.relicCount > 0) {
+                            RelicId rid = r.relics[0];
+                            for (int i = 1; i < r.relicCount; ++i) {
+                                r.relics[i-1] = r.relics[i];
+                            }
+                            --r.relicCount;
+                            if (rid != RelicId::INVALID) {
+                                bool opensScreen = gc.obtainRelic(rid);
+                                acted = true;
+                                if (opensScreen) continue;
+                            } else {
+                                acted = true;
+                            }
+                        }
+                        if (!acted) break;
+                    } else {
+                        break;
+                    }
+                }
+                result["iterations"] = iterations;
+                result["card_reward_pending"] = (gc.info.rewardsContainer.cardRewardCount > 0);
+                result["screen_state"] = static_cast<int>(gc.screenState);
+                return result;
+            },
+            "Phase 21.C: auto-resolve any CARD_SELECT or non-card REWARDS screen "
+            "opened by a relic pickup. Leaves card-reward screen pending.")
         .def_property_readonly("encounter", [](const GameContext &gc) { return gc.info.encounter; })
         .def_property_readonly("deck",
                [](const GameContext &gc) { return std::vector(gc.deck.cards.begin(), gc.deck.cards.end());},
