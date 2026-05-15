@@ -166,6 +166,15 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
                     }
                 }
             }
+            // DARKSTONE_PERIAPT.onObtainCard: +6 max HP per curse
+            // that actually makes it into the deck (after Omamori
+            // absorbs its share). Java ref:
+            //   relics/DarkstonePeriapt.java::onObtainCard.
+            if (gc.relics.has(RelicId::DARKSTONE_PERIAPT)) {
+                for (int i = 0; i < count; ++i) {
+                    gc.playerIncreaseMaxHp(6);
+                }
+            }
             if (card.canTransform()) {
                 transformableCount += count;
                 cardTypeCounts[static_cast<int>(CardType::CURSE)] += count;

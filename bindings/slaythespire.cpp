@@ -443,6 +443,17 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
                [] (const GameContext &gc) { return std::vector(gc.relics.relics); },
                "returns a copy of the list of relics"
         )
+        .def("obtain_relic",
+             [](GameContext &gc, RelicId r) { return gc.obtainRelic(r); },
+             "obtain a relic; returns true if a pickup screen was opened "
+             "(BOTTLED_*, ASTROLABE, CAULDRON, CALLING_BELL, EMPTY_CAGE, "
+             "PANDORAS_BOX, ORRERY, DOLLYS_MIRROR). Use only in tests; "
+             "production code should obtain relics via the reward pipeline."
+        )
+        .def("has_relic",
+             [](const GameContext &gc, RelicId r) { return gc.hasRelic(r); },
+             "true if the player currently holds the given relic"
+        )
         .def_property_readonly("potion_count", [](const GameContext &gc) { return gc.potionCount; })
         .def_property_readonly("potions",
             [](const GameContext &gc) {
