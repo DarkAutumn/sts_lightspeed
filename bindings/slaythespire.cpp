@@ -454,6 +454,61 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
              [](const GameContext &gc, RelicId r) { return gc.hasRelic(r); },
              "true if the player currently holds the given relic"
         )
+        // Phase 22.B: GC-level card-select screen introspection + driver.
+        // Distinct from BattleContext.get_card_select_info — that one
+        // handles in-combat card selects (Forethought, Codex, Discovery,
+        // Exhume, etc). This one handles out-of-combat selects opened
+        // by events (Transmogrifier, Purifier, Ominous Forge, ...),
+        // rewards screens (REMOVE/UPGRADE choices), and pickup-screen
+        // relics (Astrolabe, Empty Cage, Pandora's Box, Dolly's Mirror,
+        // BOTTLED_FLAME / LIGHTNING / TORNADO).
+        .def("get_card_select_info",
+             [](const GameContext &gc) -> pybind11::dict {
+                 pybind11::dict d;
+                 d["screen_type"]      = static_cast<int>(gc.info.selectScreenType);
+                 d["to_select_count"]  = gc.info.toSelectCount;
+                 d["already_selected"] = static_cast<int>(gc.info.haveSelectedCards.size());
+                 pybind11::list cands;
+                 for (const auto &c : gc.info.toSelectCards) {
+                     pybind11::dict cd;
+                     cd["card_id"]   = static_cast<int>(c.card.id);
+                     cd["upgraded"]  = c.card.isUpgraded();
+                     cd["deck_idx"]  = static_cast<int>(c.deckIdx);
+                     cands.append(cd);
+                 }
+                 d["candidates"] = cands;
+                 return d;
+             },
+             "GC card-select info. Returns dict with screen_type "
+             "(CardSelectScreenType int), to_select_count, "
+             "already_selected, and candidates: list of dicts with "
+             "card_id/upgraded/deck_idx. Only meaningful when "
+             "gc.screen_state == ScreenState.CARD_SELECT."
+        )
+        .def("choose_select_card_screen_option",
+             [](GameContext &gc, int idx) {
+                 gc.chooseSelectCardScreenOption(idx);
+             },
+             pybind11::arg("idx"),
+             "Phase 22.B: pick the candidate at toSelectCards[idx]. "
+             "For multi-pick screens (REMOVE 2, ASTROLABE 3, ...) "
+             "call repeatedly; the engine resolves the screen and "
+             "calls regainControl() once the final pick lands."
+        )
+        .def("open_card_select_screen",
+             [](GameContext &gc, CardSelectScreenType t, int n,
+                bool init_select_cards) {
+                 gc.openCardSelectScreen(t, n, init_select_cards);
+             },
+             pybind11::arg("screen_type"),
+             pybind11::arg("count"),
+             pybind11::arg("init_select_cards") = true,
+             "TEST-ONLY: force-open a card-select screen of the given "
+             "type. Production code triggers these through events / "
+             "relics / Neow / rewards. Used to exercise the "
+             "Phase 22.B card-select pipeline without spinning up "
+             "full event state."
+        )
         .def_property_readonly("potion_count", [](const GameContext &gc) { return gc.potionCount; })
         .def_property_readonly("potions",
             [](const GameContext &gc) {
@@ -561,6 +616,17 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .value("REST_ROOM", ScreenState::REST_ROOM)
         .value("SHOP_ROOM", ScreenState::SHOP_ROOM)
         .value("BATTLE", ScreenState::BATTLE);
+
+    pybind11::enum_<CardSelectScreenType> cardSelectScreenType(m, "CardSelectScreenType");
+    cardSelectScreenType.value("INVALID",           CardSelectScreenType::INVALID)
+        .value("TRANSFORM",         CardSelectScreenType::TRANSFORM)
+        .value("TRANSFORM_UPGRADE", CardSelectScreenType::TRANSFORM_UPGRADE)
+        .value("UPGRADE",           CardSelectScreenType::UPGRADE)
+        .value("REMOVE",            CardSelectScreenType::REMOVE)
+        .value("DUPLICATE",         CardSelectScreenType::DUPLICATE)
+        .value("OBTAIN",            CardSelectScreenType::OBTAIN)
+        .value("BOTTLE",            CardSelectScreenType::BOTTLE)
+        .value("BONFIRE_SPIRITS",   CardSelectScreenType::BONFIRE_SPIRITS);
 
     pybind11::enum_<CharacterClass> characterClass(m, "CharacterClass");
     characterClass.value("IRONCLAD", CharacterClass::IRONCLAD)
