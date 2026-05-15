@@ -1115,9 +1115,20 @@ Action Actions::CodexAction() {
 
 Action Actions::ExhaustMany(int limit) {
     return {[=] (BattleContext &bc) {
+        // Java ExhaustAction(amount, isRandom=false, canPickZero=true,
+        // anyNumber=true) — both real callers (Purity "exhaust up to N"
+        // and Elixir potion "exhaust any number") let the player pick
+        // zero. If hand is empty, no-op rather than opening an empty
+        // card-select screen (which a Python caller might pump with
+        // [0], corrupting cardsInHand to -1 via removeFromHandAtIdx).
+        if (bc.cards.cardsInHand == 0) {
+            return;
+        }
         bc.inputState = InputState::CARD_SELECT;
         bc.cardSelectInfo.cardSelectTask = CardSelectTask::EXHAUST_MANY;
         bc.cardSelectInfo.pickCount = limit;
+        bc.cardSelectInfo.canPickZero = true;
+        bc.cardSelectInfo.canPickAnyNumber = true;
     }};
 }
 

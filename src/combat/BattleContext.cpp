@@ -5170,6 +5170,17 @@ void BattleContext::chooseExhaustCards(const fixed_list<int, 10> &idxs) {
 
     // assume idxs is sorted in descending order
     for (const auto handIdx : listCopy) {
+        // Defensive: ignore out-of-bounds indices. Callers from
+        // Python bindings can pass [0] for ExhaustMany when the hand
+        // is actually empty (because the card that opened the
+        // card-select screen self-exhausted first, e.g. Purity).
+        // Without this guard removeFromHandAtIdx(0) would decrement
+        // cardsInHand to -1 and subsequent moveToHand writes to
+        // hand[-1] corrupt nearby fields (nextUniqueCardId,
+        // cardsInHand) — read as a wild card count like 256 later.
+        if (handIdx < 0 || handIdx >= cards.cardsInHand) {
+            continue;
+        }
         auto c = cards.hand[handIdx];
         cards.removeFromHandAtIdx(handIdx);
         triggerAndMoveToExhaustPile(c);
