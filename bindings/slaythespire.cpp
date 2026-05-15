@@ -509,6 +509,57 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
              "Phase 22.B card-select pipeline without spinning up "
              "full event state."
         )
+        // ----------------------------------------------------------------
+        // Phase 22.C: event-screen API
+        // ----------------------------------------------------------------
+        .def_readwrite("cur_event", &GameContext::curEvent,
+                       "Currently active Event id (sts.Event). Only "
+                       "meaningful when screen_state == EVENT_SCREEN.")
+        .def("choose_event_option",
+             [](GameContext &gc, int idx) {
+                 gc.chooseEventOption(idx);
+             },
+             pybind11::arg("idx"),
+             "Phase 22.C: choose option ``idx`` for the current event. "
+             "The engine performs the option's side effect (state "
+             "mutation and/or opening a card-select screen) and either "
+             "calls regainControl() or transitions into a sub-screen."
+        )
+        .def("set_event",
+             [](GameContext &gc, Event e) {
+                 gc.curEvent = e;
+                 // Install a default regainControlAction so the engine's
+                 // regainControl() call inside chooseEventOption()
+                 // resolves the EVENT_SCREEN -> MAP transition instead
+                 // of no-op'ing (we have no real map to transition to).
+                 gc.regainControlAction = [](GameContext &g) {
+                     g.screenState = ScreenState::MAP_SCREEN;
+                 };
+                 gc.setupEvent();
+             },
+             pybind11::arg("event"),
+             "TEST-ONLY: force-set the current event, install a default "
+             "regainControlAction that transitions back to MAP_SCREEN, "
+             "and run setupEvent() initialization. Production code "
+             "transitions into events via Map navigation. Used to "
+             "exercise event options end-to-end without driving the "
+             "full map."
+        )
+        .def("get_event_info",
+             [](const GameContext &gc) -> pybind11::dict {
+                 pybind11::dict d;
+                 d["event_id"]   = static_cast<int>(gc.curEvent);
+                 d["hp_amount0"] = gc.info.hpAmount0;
+                 d["hp_amount1"] = gc.info.hpAmount1;
+                 d["gold_loss"]  = gc.info.goldLoss;
+                 d["phase"]      = gc.info.phase;
+                 d["event_data"] = gc.info.eventData;
+                 return d;
+             },
+             "Phase 22.C: returns a dict of read-only event metadata "
+             "(event_id, hp/gold amounts, phase, eventData). Only "
+             "meaningful when screen_state == EVENT_SCREEN."
+        )
         .def_property_readonly("potion_count", [](const GameContext &gc) { return gc.potionCount; })
         .def_property_readonly("potions",
             [](const GameContext &gc) {
@@ -627,6 +678,70 @@ PYBIND11_MODULE(slaythespire, m, pybind11::mod_gil_not_used()) {
         .value("OBTAIN",            CardSelectScreenType::OBTAIN)
         .value("BOTTLE",            CardSelectScreenType::BOTTLE)
         .value("BONFIRE_SPIRITS",   CardSelectScreenType::BONFIRE_SPIRITS);
+
+    // Phase 22.C: Event enum — all 55 values, since the wrapper's
+    // KEEP/REJECT triage is in Python and we want one canonical
+    // identifier vocabulary. The "shape" of each event (option count,
+    // option semantics) is encoded in the wrapper-side per-event
+    // tables.
+    pybind11::enum_<Event> eventEnum(m, "Event");
+    eventEnum.value("INVALID",                       Event::INVALID)
+        .value("MONSTER",                            Event::MONSTER)
+        .value("REST",                               Event::REST)
+        .value("SHOP",                               Event::SHOP)
+        .value("TREASURE",                           Event::TREASURE)
+        .value("NEOW",                               Event::NEOW)
+        .value("OMINOUS_FORGE",                      Event::OMINOUS_FORGE)
+        .value("PLEADING_VAGRANT",                   Event::PLEADING_VAGRANT)
+        .value("ANCIENT_WRITING",                    Event::ANCIENT_WRITING)
+        .value("OLD_BEGGAR",                         Event::OLD_BEGGAR)
+        .value("BIG_FISH",                           Event::BIG_FISH)
+        .value("BONFIRE_SPIRITS",                    Event::BONFIRE_SPIRITS)
+        .value("COLOSSEUM",                          Event::COLOSSEUM)
+        .value("CURSED_TOME",                        Event::CURSED_TOME)
+        .value("DEAD_ADVENTURER",                    Event::DEAD_ADVENTURER)
+        .value("DESIGNER_IN_SPIRE",                  Event::DESIGNER_IN_SPIRE)
+        .value("AUGMENTER",                          Event::AUGMENTER)
+        .value("DUPLICATOR",                         Event::DUPLICATOR)
+        .value("FACE_TRADER",                        Event::FACE_TRADER)
+        .value("FALLING",                            Event::FALLING)
+        .value("FORGOTTEN_ALTAR",                    Event::FORGOTTEN_ALTAR)
+        .value("THE_DIVINE_FOUNTAIN",                Event::THE_DIVINE_FOUNTAIN)
+        .value("GHOSTS",                             Event::GHOSTS)
+        .value("GOLDEN_IDOL",                        Event::GOLDEN_IDOL)
+        .value("GOLDEN_SHRINE",                      Event::GOLDEN_SHRINE)
+        .value("WING_STATUE",                        Event::WING_STATUE)
+        .value("KNOWING_SKULL",                      Event::KNOWING_SKULL)
+        .value("LAB",                                Event::LAB)
+        .value("THE_SSSSSERPENT",                    Event::THE_SSSSSERPENT)
+        .value("LIVING_WALL",                        Event::LIVING_WALL)
+        .value("MASKED_BANDITS",                     Event::MASKED_BANDITS)
+        .value("MATCH_AND_KEEP",                     Event::MATCH_AND_KEEP)
+        .value("MINDBLOOM",                          Event::MINDBLOOM)
+        .value("HYPNOTIZING_COLORED_MUSHROOMS",      Event::HYPNOTIZING_COLORED_MUSHROOMS)
+        .value("MYSTERIOUS_SPHERE",                  Event::MYSTERIOUS_SPHERE)
+        .value("THE_NEST",                           Event::THE_NEST)
+        .value("NLOTH",                              Event::NLOTH)
+        .value("NOTE_FOR_YOURSELF",                  Event::NOTE_FOR_YOURSELF)
+        .value("PURIFIER",                           Event::PURIFIER)
+        .value("SCRAP_OOZE",                         Event::SCRAP_OOZE)
+        .value("SECRET_PORTAL",                      Event::SECRET_PORTAL)
+        .value("SENSORY_STONE",                      Event::SENSORY_STONE)
+        .value("SHINING_LIGHT",                      Event::SHINING_LIGHT)
+        .value("THE_CLERIC",                         Event::THE_CLERIC)
+        .value("THE_JOUST",                          Event::THE_JOUST)
+        .value("THE_LIBRARY",                        Event::THE_LIBRARY)
+        .value("THE_MAUSOLEUM",                      Event::THE_MAUSOLEUM)
+        .value("THE_MOAI_HEAD",                      Event::THE_MOAI_HEAD)
+        .value("THE_WOMAN_IN_BLUE",                  Event::THE_WOMAN_IN_BLUE)
+        .value("TOMB_OF_LORD_RED_MASK",              Event::TOMB_OF_LORD_RED_MASK)
+        .value("TRANSMORGRIFIER",                    Event::TRANSMORGRIFIER)
+        .value("UPGRADE_SHRINE",                     Event::UPGRADE_SHRINE)
+        .value("VAMPIRES",                           Event::VAMPIRES)
+        .value("WE_MEET_AGAIN",                      Event::WE_MEET_AGAIN)
+        .value("WHEEL_OF_CHANGE",                    Event::WHEEL_OF_CHANGE)
+        .value("WINDING_HALLS",                      Event::WINDING_HALLS)
+        .value("WORLD_OF_GOOP",                      Event::WORLD_OF_GOOP);
 
     pybind11::enum_<CharacterClass> characterClass(m, "CharacterClass");
     characterClass.value("IRONCLAD", CharacterClass::IRONCLAD)
